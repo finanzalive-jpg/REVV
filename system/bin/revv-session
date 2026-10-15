@@ -1,0 +1,13 @@
+#!/bin/sh
+# Revv – avvia lo schermo (cage) con dentro il desktop di Revv.
+exec >/tmp/revv-session.log 2>&1
+export XDG_SESSION_TYPE=wayland
+export GDK_BACKEND=wayland
+export GTK_A11Y=none
+# Se manca una scheda video con accelerazione (es. macchine virtuali), disegna via software.
+export WLR_RENDERER_ALLOW_SOFTWARE=1
+if systemd-detect-virt -q; then
+  export WLR_NO_HARDWARE_CURSORS=1
+  export WEBKIT_DISABLE_DMABUF_RENDERER=1
+fi
+exec cage -s -- /usr/local/bin/revv-shell

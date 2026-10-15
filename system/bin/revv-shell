@@ -1,0 +1,373 @@
+#!/usr/bin/env python3
+# Revv – finestra a tutto schermo (GTK 4 + WebKitGTK) e "ponte" verso il sistema:
+# l'interfaccia chiede, questo programma esegue con gli strumenti di Linux e risponde.
+import gi, json, os, re, subprocess, threading, time, base64, pwd
+gi.require_version('Gtk', '4.0')
+gi.require_version('WebKit', '6.0')
+from gi.repository import Gtk, WebKit, GLib
+
+URL = 'file:///opt/revv/index.html'
+HOME = os.path.expanduser('~')
+USER = pwd.getpwuid(os.getuid()).pw_name
+
+
+def run(cmd, timeout=20):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout.strip(), p.stderr.strip()
+    except Exception as e:  # comando mancante o scaduto
+        return 1, '', str(e)
+
+
+def root(cmd, timeout=20):
+    """Esegue come amministratore (sudo senza password sulla chiavetta live)."""
+    rc, out, err = run(cmd, timeout)
+    if rc != 0:
+        rc, out, err = run(['sudo', '-n'] + cmd, timeout)
+    return rc, out, err
+
+
+def nm_fields(line):
+    # nmcli -t separa i campi con ":" e scrive i ":" interni come "\:"
+    parts = re.split(r'(?<!\\):', line)
+    return [p.replace('\\:', ':').replace('\\\\', '\\') for p in parts]
+
+
+# ---------------- Rete ----------------
+def net_status(_):
+    rc, out, _ = run(['nmcli', '-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device'])
+    devs = []
+    for l in out.splitlines():
+        f = nm_fields(l)
+        if len(f) >= 4:
+            devs.append({'device': f[0], 'type': f[1], 'state': f[2], 'connection': f[3]})
+    wifi = [d for d in devs if d['type'] == 'wifi']
+    eth = [d for d in devs if d['type'] == 'ethernet']
+    _, radio, _ = run(['nmcli', 'radio', 'wifi'])
+    active = next((d for d in devs if d['type'] in ('wifi', 'ethernet') and d['state'].startswith('connected')), None)
+    conn = 'none'
+    if active:
+        _, conn, _ = run(['nmcli', 'networking', 'connectivity', 'check'], timeout=12)
+    return {'nm': rc == 0, 'wifiDevice': bool(wifi), 'wifiName': wifi[0]['device'] if wifi else '', 'wifiOn': radio.strip() == 'enabled',
+            'ethernet': bool(eth), 'ethernetCable': any(d['state'] != 'unavailable' for d in eth),
+            'active': active, 'connectivity': conn or 'unknown'}
+
+
+def net_scan(_):
+    rc, out, err = run(['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list', '--rescan', 'yes'], timeout=30)
+    nets = {}
+    for l in out.splitlines():
+        f = nm_fields(l)
+        if len(f) < 4 or not f[1]:
+            continue
+        ssid = f[1]
+        sig = int(f[2]) if f[2].isdigit() else 0
+        sec = '' if f[3] in ('', '--') else f[3]
+        cur = nets.get(ssid)
+        if not cur or sig > cur['signal'] or f[0] == '*':
+            nets[ssid] = {'ssid': ssid, 'signal': sig, 'secure': bool(sec), 'security': sec,
+                          'inUse': f[0] == '*' or (cur or {}).get('inUse', False)}
+    return sorted(nets.values(), key=lambda n: (not n['inUse'], -n['signal']))
+
+
+def net_connect(a):
+    ssid, pw = a.get('ssid', ''), a.get('password', '')
+    cmd = ['nmcli', 'device', 'wifi', 'connect', ssid] + (['password', pw] if pw else [])
+    rc, out, err = run(cmd, timeout=60)
+    if rc == 0:
+        return {'ok': True}
+    msg = err or out
+    if 'Secrets were required' in msg or 'password' in msg.lower() or '802-1x' in msg:
+        msg = 'La password non è corretta.'
+    elif 'No network with SSID' in msg:
+        msg = 'La rete non è più raggiungibile. Avvicinati al router e riprova.'
+    return {'ok': False, 'message': msg}
+
+
+def net_radio(a):
+    rc, out, err = run(['nmcli', 'radio', 'wifi', 'on' if a.get('on') else 'off'])
+    return {'ok': rc == 0, 'message': err}
+
+
+def net_diag(_):
+    steps = []
+    st = net_status(None)
+    # 1. scheda di rete
+    if not st['nm']:
+        root(['systemctl', 'restart', 'NetworkManager'])
+        time.sleep(3)
+        st = net_status(None)
+    has = st['wifiDevice'] or st['ethernet']
+    steps.append({'name': 'Scheda di rete del computer', 'ok': has,
+                  'detail': ('Wi‑Fi' if st['wifiDevice'] else '') + (' e cavo' if st['wifiDevice'] and st['ethernet'] else ('cavo' if st['ethernet'] else '')) if has else 'non trovata: probabilmente manca il driver'})
+    if not has:
+        return {'steps': steps, 'ok': False, 'summary': 'Non trovo nessuna scheda di rete. Apri Sistema e hardware per vedere il dettaglio.'}
+    # 2. collegamento
+    fixed = ''
+    if st['wifiDevice'] and not st['wifiOn'] and not st['active']:
+        run(['nmcli', 'radio', 'wifi', 'on'])
+        time.sleep(4)
+        fixed = 'il Wi‑Fi era spento, l’ho acceso'
+        st = net_status(None)
+    if not st['active'] and st['wifiDevice']:
+        run(['nmcli', 'device', 'connect', st['wifiName']], timeout=20)
+        st = net_status(None)
+    act = st['active']
+    steps.append({'name': 'Collegamento alla rete', 'ok': bool(act),
+                  'detail': (fixed + ' · ' if fixed else '') + (('Wi‑Fi ' + act['connection']) if act and act['type'] == 'wifi' else ('cavo di rete' if act else 'non collegato: scegli una rete qui sotto'))})
+    if not act:
+        return {'steps': steps, 'ok': False, 'summary': 'Il computer non è collegato a nessuna rete. Scegli la tua rete Wi‑Fi qui sotto o collega il cavo.'}
+    # 3. router
+    _, route, _ = run(['ip', 'route', 'show', 'default'])
+    m = re.search(r'default via (\S+)', route)
+    gw = m.group(1) if m else ''
+    rc = run(['ping', '-c', '1', '-W', '2', gw])[0] if gw else 1
+    steps.append({'name': 'Router', 'ok': rc == 0, 'detail': ('risponde (' + gw + ')') if rc == 0 else 'non risponde'})
+    if rc != 0:
+        root(['nmcli', 'device', 'reapply', act['device']])
+        return {'steps': steps, 'ok': False, 'summary': 'Il router non risponde. Prova a spegnerlo e riaccenderlo, poi controlla di nuovo.'}
+    # 4. internet
+    rc = run(['ping', '-c', '1', '-W', '3', '1.1.1.1'])[0]
+    if rc != 0 and st.get('connectivity') == 'full':
+        rc = 0  # alcune reti bloccano il ping ma internet funziona
+    steps.append({'name': 'Uscita verso internet', 'ok': rc == 0, 'detail': 'ok' if rc == 0 else 'bloccata'})
+    if rc != 0:
+        return {'steps': steps, 'ok': False, 'summary': 'Il router c’è ma internet no. Di solito è un problema della linea: controlla le luci del router o chiama il gestore.'}
+    # 5. dns
+    t0 = time.time()
+    rc = run(['getent', 'hosts', 'ubuntu.com'], timeout=8)[0]
+    ms = int((time.time() - t0) * 1000)
+    steps.append({'name': 'Traduzione dei nomi dei siti (DNS)', 'ok': rc == 0, 'detail': f'ok · {ms} ms' if rc == 0 else 'non funziona'})
+    if rc != 0:
+        return {'steps': steps, 'ok': False, 'summary': 'Internet funziona ma i nomi dei siti non vengono trovati (DNS). Riavvia il router; se non basta, scrivimi.'}
+    return {'steps': steps, 'ok': True, 'summary': 'Tutto a posto: internet funziona.' + (' (' + fixed + ')' if fixed else '')}
+
+
+# ---------------- Audio e luminosità ----------------
+def audio_get(_):
+    rc, out, _ = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'])
+    if rc != 0:
+        return {'available': False}
+    m = re.search(r'([\d.]+)', out)
+    vol = round(float(m.group(1)) * 100) if m else 0
+    _, info, _ = run(['wpctl', 'inspect', '@DEFAULT_AUDIO_SINK@'])
+    d = re.search(r'node\.description = "([^"]+)"', info)
+    return {'available': True, 'volume': vol, 'muted': 'MUTED' in out, 'name': d.group(1) if d else ''}
+
+
+def audio_set(a):
+    v = max(0, min(100, int(a.get('volume', 50))))
+    run(['wpctl', 'set-volume', '-l', '1.0', '@DEFAULT_AUDIO_SINK@', f'{v / 100:.2f}'])
+    run(['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', '1' if v == 0 else '0'])
+    return {'ok': True}
+
+
+def bright_get(_):
+    rc, out, _ = run(['brightnessctl', '-m', '-c', 'backlight'])
+    if rc != 0 or not out:
+        return {'available': False}
+    f = out.split(',')
+    return {'available': True, 'percent': int(f[3].rstrip('%')) if len(f) > 3 else 100}
+
+
+def bright_set(a):
+    p = max(5, min(100, int(a.get('percent', 100))))
+    rc = root(['brightnessctl', '-q', '-c', 'backlight', 'set', f'{p}%'])[0]
+    return {'ok': rc == 0}
+
+
+def power(a):
+    act = 'reboot' if a.get('action') == 'reboot' else 'poweroff'
+    run(['sync'])
+    rc, _, err = root(['systemctl', act])
+    return {'ok': rc == 0, 'message': err}
+
+
+# ---------------- Sistema e hardware ----------------
+def sys_info(_):
+    mem = {}
+    for l in open('/proc/meminfo'):
+        k, v = l.split(':')
+        mem[k] = int(v.split()[0]) * 1024
+    cpu = ''
+    for l in open('/proc/cpuinfo'):
+        if l.startswith('model name'):
+            cpu = l.split(':', 1)[1].strip()
+            break
+    cores = os.cpu_count()
+    _, boot, _ = run(['systemd-analyze'])
+    m = re.search(r'graphical\.target reached after ([\d.]+)(ms|s|min)', boot) or re.search(r'=\s*([\d.]+)(ms|s|min)', boot)
+    boot_s = None
+    if m:
+        boot_s = float(m.group(1)) / (1000 if m.group(2) == 'ms' else 1) * (60 if m.group(2) == 'min' else 1)
+    hw = []
+    _, out, _ = run(['lspci', '-vmmk'])
+    for rec in out.split('\n\n'):
+        r = {}
+        for l in rec.splitlines():
+            if ':' in l:
+                k, v = l.split(':', 1)
+                r[k.strip()] = v.strip()
+        cls = r.get('Class', '')
+        kind = None
+        if cls in ('VGA compatible controller', '3D controller', 'Display controller'):
+            kind = 'video'
+        elif cls == 'Network controller':
+            kind = 'wifi'
+        elif cls == 'Ethernet controller':
+            kind = 'ethernet'
+        elif cls in ('Audio device', 'Multimedia audio controller'):
+            kind = 'audio'
+        if kind:
+            hw.append({'kind': kind, 'name': (r.get('Vendor', '') + ' ' + r.get('Device', '')).strip(),
+                       'driver': r.get('Driver', '')})
+    _, usb, _ = run(['lsusb'])
+    for l in usb.splitlines():
+        name = l.split(' ', 6)[-1] if l.count(' ') >= 6 else l
+        low = name.lower()
+        kind = 'webcam' if ('camera' in low or 'webcam' in low) else 'printer' if 'printer' in low or 'deskjet' in low or 'laserjet' in low else 'bluetooth' if 'bluetooth' in low else None
+        if kind:
+            hw.append({'kind': kind, 'name': name, 'driver': 'usb'})
+    bat = None
+    for b in ('BAT0', 'BAT1'):
+        p = f'/sys/class/power_supply/{b}/capacity'
+        if os.path.exists(p):
+            st = open(f'/sys/class/power_supply/{b}/status').read().strip()
+            bat = {'percent': int(open(p).read()), 'status': st}
+            break
+    st = os.statvfs('/')
+    return {'memTotal': mem.get('MemTotal', 0), 'memUsed': mem.get('MemTotal', 0) - mem.get('MemAvailable', 0),
+            'cpu': cpu, 'cores': cores, 'kernel': os.uname().release, 'boot': boot_s, 'hardware': hw,
+            'battery': bat, 'live': os.path.exists('/run/casper') or os.path.exists('/cdrom/casper'),
+            'diskFree': st.f_bavail * st.f_frsize}
+
+
+# ---------------- File e dischi ----------------
+def fs_roots(_):
+    rc, out, _ = run(['lsblk', '-J', '-b', '-o', 'NAME,PATH,LABEL,SIZE,FSTYPE,MOUNTPOINTS,TYPE,RM'])
+    drives = []
+    try:
+        def walk(nodes):
+            for n in nodes:
+                if n.get('type') == 'part' or (n.get('type') == 'disk' and n.get('fstype')):
+                    fs = n.get('fstype') or ''
+                    mps = [m for m in (n.get('mountpoints') or []) if m]
+                    live = any(m.startswith(('/cdrom', '/rofs', '/run/live', '/isodevice')) for m in mps)
+                    if fs in ('ntfs', 'vfat', 'exfat', 'ext4', 'btrfs', 'xfs') and not live and int(n.get('size') or 0) > 200 * 1024 * 1024:
+                        drives.append({'dev': n['path'], 'label': n.get('label') or '', 'size': int(n.get('size') or 0),
+                                       'fs': fs, 'removable': bool(n.get('rm')), 'mount': mps[0] if mps else ''})
+                walk(n.get('children') or [])
+        walk(json.loads(out).get('blockdevices', []))
+    except Exception:
+        pass
+    return {'home': HOME, 'drives': drives}
+
+
+def fs_mount(a):
+    dev = a.get('dev', '')
+    if not re.match(r'^/dev/[\w-]+$', dev):
+        return {'ok': False, 'message': 'disco non valido'}
+    rc, out, _ = run(['lsblk', '-no', 'MOUNTPOINTS,FSTYPE,LABEL', dev])
+    first = out.splitlines()[0] if out else ''
+    for m in first.split():
+        if m.startswith('/'):
+            return {'ok': True, 'mount': m}
+    _, fs, _ = run(['lsblk', '-no', 'FSTYPE', dev])
+    _, label, _ = run(['lsblk', '-no', 'LABEL', dev])
+    name = re.sub(r'[^\w.-]', '_', label.strip() or os.path.basename(dev))
+    mp = f'/media/{USER}/{name}'
+    root(['mkdir', '-p', mp])
+    uid, gid = os.getuid(), os.getgid()
+    fs = fs.strip()
+    if fs == 'ntfs':
+        rc, _, err = root(['mount', '-t', 'ntfs3', '-o', f'ro,uid={uid},gid={gid}', dev, mp])
+    elif fs in ('vfat', 'exfat'):
+        rc, _, err = root(['mount', '-o', f'ro,uid={uid},gid={gid}', dev, mp])
+    else:
+        rc, _, err = root(['mount', '-o', 'ro', dev, mp])
+    if rc != 0:
+        msg = err
+        if 'hibernat' in err.lower() or 'dirty' in err.lower() or 'unclean' in err.lower():
+            msg = 'Windows non è stato spento del tutto (avvio rapido attivo). Da Windows tieni premuto Maiusc mentre premi Arresta, poi riprova.'
+        return {'ok': False, 'message': msg}
+    return {'ok': True, 'mount': mp}
+
+
+def fs_list(a):
+    path = os.path.abspath(os.path.expanduser(a.get('path') or HOME))
+    dirs, files = [], []
+    try:
+        with os.scandir(path) as it:
+            for e in it:
+                if e.name.startswith('.') or e.name in ('$RECYCLE.BIN', 'System Volume Information', 'lost+found'):
+                    continue
+                try:
+                    st = e.stat()
+                    if e.is_dir():
+                        dirs.append({'name': e.name, 'mtime': int(st.st_mtime * 1000)})
+                    else:
+                        files.append({'name': e.name, 'size': st.st_size, 'mtime': int(st.st_mtime * 1000)})
+                except OSError:
+                    pass
+                if len(dirs) + len(files) > 5000:
+                    break
+    except PermissionError:
+        return {'ok': False, 'message': 'Non hai il permesso di aprire questa cartella.'}
+    except FileNotFoundError:
+        return {'ok': False, 'message': 'La cartella non esiste più.'}
+    return {'ok': True, 'path': path, 'dirs': dirs, 'files': files}
+
+
+def fs_read(a):
+    path = os.path.abspath(a.get('path', ''))
+    size = os.path.getsize(path)
+    if size > 80 * 1024 * 1024:
+        return {'ok': False, 'message': 'File troppo grande per l’anteprima (oltre 80 MB).'}
+    with open(path, 'rb') as f:
+        return {'ok': True, 'data': base64.b64encode(f.read()).decode()}
+
+
+CMDS = {'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
+        'net.diag': net_diag, 'audio.get': audio_get, 'audio.set': audio_set, 'bright.get': bright_get,
+        'bright.set': bright_set, 'power': power, 'sys.info': sys_info, 'fs.roots': fs_roots,
+        'fs.mount': fs_mount, 'fs.list': fs_list, 'fs.read': fs_read}
+
+
+class Revv(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id='org.revv.Shell')
+
+    def do_activate(self):
+        win = Gtk.ApplicationWindow(application=self, title='Revv')
+        self.view = view = WebKit.WebView()
+        s = view.get_settings()
+        s.set_allow_file_access_from_file_urls(True)
+        s.set_allow_universal_access_from_file_urls(True)
+        s.set_enable_developer_extras(True)
+        ucm = view.get_user_content_manager()
+        ucm.register_script_message_handler('revv', None)
+        ucm.connect('script-message-received::revv', self.on_message)
+        view.load_uri(URL)
+        win.set_decorated(False)
+        win.set_child(view)
+        win.present()
+
+    def on_message(self, _ucm, value):
+        try:
+            msg = json.loads(value.to_json(0))
+        except Exception:
+            return
+        threading.Thread(target=self.handle, args=(msg,), daemon=True).start()
+
+    def handle(self, msg):
+        fn = CMDS.get(msg.get('cmd'))
+        try:
+            res = {'data': fn(msg.get('args') or {})} if fn else {'error': 'comando sconosciuto'}
+        except Exception as e:
+            res = {'error': str(e)}
+        js = 'window.__revvReply(%d, %s)' % (int(msg.get('id', 0)), json.dumps(res))
+        GLib.idle_add(lambda: (self.view.evaluate_javascript(js, -1, None, None, None, None, None), False)[1])
+
+
+if __name__ == '__main__':
+    Revv().run(None)

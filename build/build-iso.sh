@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# Revv – costruisce la ISO live (Ubuntu 26.04 LTS + desktop Revv) da zero.
+# Uso (come root, su Ubuntu 24.04 o più recente):  sudo ./build/build-iso.sh [versione]
+# Risultato: out/revv-<versione>-live-amd64.iso
+set -euo pipefail
+
+VERSION="${1:-0.3}"
+CODENAME="resolute"            # Ubuntu 26.04 LTS
+MIRROR="http://archive.ubuntu.com/ubuntu"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WORK="${WORK:-$ROOT/work}"
+OUT="$ROOT/out"
+CH="$WORK/chroot"
+ISO="$WORK/iso"
+NAME="revv-${VERSION}-live-amd64"
+
+[ "$(id -u)" -eq 0 ] || { echo "Lancia lo script come root (sudo)."; exit 1; }
+log(){ printf '\n==> %s\n' "$*"; }
+
+cleanup(){
+  for m in dev/pts dev sys proc; do mountpoint -q "$CH/$m" 2>/dev/null && umount -l "$CH/$m" || true; done
+}
+trap cleanup EXIT
+
+log "1/9 Strumenti di costruzione"
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y -qq debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools nodejs npm >/dev/null
+# debootstrap più vecchi non conoscono ancora "resolute": usa lo script generico di Ubuntu
+[ -e "/usr/share/debootstrap/scripts/$CODENAME" ] || ln -s gutsy "/usr/share/debootstrap/scripts/$CODENAME"
+
+log "2/9 Sistema Ubuntu di base ($CODENAME)"
+rm -rf "$WORK"; mkdir -p "$WORK" "$OUT"
+debootstrap --arch=amd64 --variant=minbase --components=main,restricted,universe,multiverse "$CODENAME" "$CH" "$MIRROR"
+cat > "$CH/etc/apt/sources.list" <<EOF
+deb $MIRROR $CODENAME main restricted universe multiverse
+deb $MIRROR $CODENAME-updates main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu $CODENAME-security main restricted universe multiverse
+EOF
+rm -f "$CH/etc/apt/sources.list.d/ubuntu.sources"
+for m in proc sys dev dev/pts; do mount --bind "/$m" "$CH/$m"; done
+cp -L /etc/resolv.conf "$CH/etc/resolv.conf"
+printf '#!/bin/sh\nexit 101\n' > "$CH/usr/sbin/policy-rc.d"; chmod +x "$CH/usr/sbin/policy-rc.d"
+
+log "3/9 Kernel, driver, firmware e componenti di Revv"
+chroot "$CH" apt-get update -qq
+# shellcheck disable=SC2046
+chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat "$ROOT/build/packages.txt")
+
+log "4/9 Desktop di Revv (offline: caratteri e lettori di file inclusi)"
+D="$CH/opt/revv"; mkdir -p "$D/fonts" "$D/lib"
+NPM="$WORK/npm"; mkdir -p "$NPM"
+( cd "$NPM" && for p in @fontsource/onest@5 @fontsource/unbounded@5 @fontsource/jetbrains-mono@5 @fontsource/source-serif-4@5 pdfjs-dist@3.11.174 mammoth@1.6.0 xlsx@0.18.5; do npm pack -q "$p" >/dev/null; done
+  for f in *.tgz; do mkdir -p "x/${f%.tgz}"; tar xzf "$f" -C "x/${f%.tgz}"; done )
+python3 "$ROOT/build/offline-desktop.py" "$ROOT/desktop/index.html" "$NPM/x" "$D"
+cp "$ROOT/LICENSE" "$D/LICENZA-revv.txt"; cp "$ROOT/NOTICE.md" "$D/CREDITI.md"
+
+log "5/9 Configurazione di sistema"
+install -m 755 "$ROOT/system/bin/revv-shell" "$ROOT/system/bin/revv-session" "$CH/usr/local/bin/"
+cp -r "$ROOT/system/etc/." "$CH/etc/"
+for d in Documenti Immagini Musica Download Video; do mkdir -p "$CH/etc/skel/$d"; done
+echo revv > "$CH/etc/hostname"; printf '127.0.0.1 localhost\n127.0.1.1 revv\n' > "$CH/etc/hosts"
+grep -q XKB_DEFAULT_LAYOUT "$CH/etc/environment" || echo 'XKB_DEFAULT_LAYOUT=it' >> "$CH/etc/environment"
+chroot "$CH" sh -c '
+  sed -i "s/^# *it_IT.UTF-8/it_IT.UTF-8/" /etc/locale.gen; locale-gen >/dev/null
+  ln -sf /usr/share/zoneinfo/Europe/Rome /etc/localtime; echo Europe/Rome > /etc/timezone
+  systemctl enable greetd NetworkManager >/dev/null 2>&1
+  systemctl disable getty@tty1.service >/dev/null 2>&1 || true
+  systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1 || true
+  systemctl set-default graphical.target >/dev/null 2>&1'
+cat > "$CH/etc/os-release.revv" <<EOF
+PRETTY_NAME="Revv $VERSION"
+NAME="Revv"
+VERSION="$VERSION"
+ID=revv
+ID_LIKE=ubuntu
+HOME_URL="https://github.com/finanzalive-jpg/revv"
+EOF
+
+log "6/9 Avvio live (initramfs)"
+chroot "$CH" update-initramfs -c -k all
+KVER="$(ls "$CH/lib/modules" | sort -V | tail -1)"
+
+log "7/9 Pulizia"
+chroot "$CH" apt-get clean
+rm -f "$CH/usr/sbin/policy-rc.d"
+rm -rf "$CH/var/lib/apt/lists/"* "$CH/tmp/"* "$CH/var/log/"*.log
+printf 'nameserver 127.0.0.53\n' > "$CH/etc/resolv.conf"
+: > "$CH/etc/machine-id"
+cleanup
+
+log "8/9 Immagine compressa del sistema"
+mkdir -p "$ISO/casper" "$ISO/boot/grub" "$ISO/.disk"
+cp "$CH/boot/vmlinuz-$KVER" "$ISO/casper/vmlinuz"
+cp "$CH/boot/initrd.img-$KVER" "$ISO/casper/initrd"
+chmod 644 "$ISO/casper/vmlinuz" "$ISO/casper/initrd"
+chroot "$CH" dpkg-query -W --showformat='${Package} ${Version}\n' > "$ISO/casper/filesystem.manifest"
+# Le cartelle /proc /sys /dev /run /tmp /boot devono esistere (vuote) o l'avvio si blocca
+mksquashfs "$CH" "$ISO/casper/filesystem.squashfs" -comp zstd -Xcompression-level 15 -b 1M -noappend -no-progress \
+  -wildcards -e 'proc/*' 'sys/*' 'dev/*' 'run/*' 'tmp/*' 'boot/*'
+printf '%s' "$(du -sx --block-size=1 "$CH" | cut -f1)" > "$ISO/casper/filesystem.size"
+echo "Revv $VERSION - live amd64 $(date +%Y%m%d)" > "$ISO/.disk/info"
+cp "$ROOT/build/grub.cfg" "$ISO/boot/grub/grub.cfg"
+( cd "$ISO" && find . -type f ! -name md5sum.txt -print0 | xargs -0 md5sum > md5sum.txt )
+
+log "9/9 ISO avviabile (BIOS + UEFI)"
+grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -volid "REVV_${VERSION//./}"
+( cd "$OUT" && sha256sum "$NAME.iso" > "$NAME.iso.sha256" )
+ls -lh "$OUT"
+echo "Fatto: $OUT/$NAME.iso"
