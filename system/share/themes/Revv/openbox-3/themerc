@@ -1,0 +1,36 @@
+# Revv – barre del titolo in stile vetro per i programmi (browser, Office…)
+border.width: 1
+padding.height: 6
+window.active.border.color: #2d5f80
+window.inactive.border.color: #8ea3b0
+window.active.title.bg: Gradient SplitVertical
+window.active.title.bg.color: #d5ebf8
+window.active.title.bg.color.splitTo: #b2d4ea
+window.active.title.bg.colorTo: #9cc6e2
+window.active.title.bg.colorTo.splitTo: #c4e0f2
+window.inactive.title.bg: Gradient Vertical
+window.inactive.title.bg.color: #e8eef2
+window.inactive.title.bg.colorTo: #d0dbe2
+window.active.label.text.color: #0a1c27
+window.inactive.label.text.color: #6b7c88
+window.label.text.justify: left
+window.active.button.unpressed.image.color: #1b3444
+window.inactive.button.unpressed.image.color: #7b8a95
+window.active.button.close.unpressed.image.color: #b53a22
+window.active.shadow.size: 28
+window.active.shadow.color: #00000066
+window.inactive.shadow.size: 14
+window.inactive.shadow.color: #00000040
+menu.items.bg.color: #f5f9fb
+menu.items.text.color: #122430
+menu.items.active.bg.color: #2186c9
+menu.items.active.text.color: #ffffff
+menu.border.color: #2d5f80
+menu.separator.color: #d3e1e8
+osd.bg.color: #eaf3f9
+osd.border.color: #2d5f80
+osd.border.width: 1
+osd.label.text.color: #122430
+osd.window-switcher.width: 640
+snapping.overlay.region.bg.enabled: yes
+snapping.overlay.region.bg.color: #2186c955

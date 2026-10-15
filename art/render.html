@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:U;src:url(/home/claude/w2/npm/x/fontsource-unbounded-5.3.0/package/files/unbounded-latin-700-normal.woff2)}
+@font-face{font-family:O;src:url(/home/claude/w2/npm/x/fontsource-onest-5.3.1/package/files/onest-latin-500-normal.woff2)}
+html,body{margin:0;background:transparent}
+.orb{width:var(--s);height:var(--s);border-radius:50%;position:relative;
+ background:radial-gradient(circle at 50% 28%,rgba(255,255,255,.88),rgba(255,255,255,0) 42%),radial-gradient(circle at 50% 82%,#8fe0ff,#2186c9 55%,#0a3d66);
+ box-shadow:0 0 0 calc(var(--s)*.03) rgba(255,255,255,.28),0 0 calc(var(--s)*.35) rgba(95,190,240,.55),inset 0 calc(var(--s)*-.04) calc(var(--s)*.1) rgba(0,30,60,.35);display:grid;place-items:center;border:calc(var(--s)*.012) solid rgba(5,40,70,.8)}
+.orb img{width:58%;height:58%;filter:drop-shadow(0 calc(var(--s)*.015) calc(var(--s)*.02) rgba(0,0,0,.45))}
+.orb::after{content:"";position:absolute;left:14%;right:14%;top:5%;height:40%;border-radius:50%;background:linear-gradient(rgba(255,255,255,.65),rgba(255,255,255,0))}
+#bg{width:1920px;height:1080px;position:relative;overflow:hidden;
+ background:radial-gradient(ellipse 80% 55% at 78% 16%, rgba(150,220,245,.55), transparent 60%),radial-gradient(ellipse 60% 50% at 10% 90%, rgba(40,150,155,.55), transparent 65%),linear-gradient(160deg,#14506e 0%,#0a2236 72%)}
+#bg::before,#bg::after{content:"";position:absolute;left:-20%;right:-20%;height:22%;border-radius:50%;filter:blur(14px)}
+#bg::before{top:38%;background:linear-gradient(90deg,transparent,rgba(190,240,255,.22),rgba(255,255,255,.08),transparent);transform:rotate(-11deg)}
+#bg::after{top:55%;background:linear-gradient(90deg,transparent,rgba(120,220,210,.16),transparent 70%);transform:rotate(-6deg)}
+.word{font-family:U;font-weight:700;color:#fff;letter-spacing:.02em;text-shadow:0 2px 18px rgba(0,0,0,.35)}
+.tag{font-family:O;font-weight:500;color:#cfe8f5;letter-spacing:.06em}
+.ring{width:var(--s);height:var(--s);border-radius:50%;background:conic-gradient(from 0deg,rgba(150,225,255,0) 0deg,rgba(150,225,255,0) 250deg,rgba(190,240,255,.95) 345deg,rgba(255,255,255,1) 360deg);
+ -webkit-mask:radial-gradient(circle,transparent calc(50% - var(--w)),#000 calc(50% - var(--w) + 1px),#000 50%,transparent calc(50% + 1px));filter:drop-shadow(0 0 8px rgba(140,220,255,.9))}
+</style></head><body>
+<div id="v"></div>
+<script>
+const P=new URLSearchParams(location.search),k=P.get('k');const v=document.getElementById('v');
+if(k==='orb'){v.innerHTML=`<div class="orb" style="--s:${P.get('s')}px"><img src="glyph.svg"></div>`;v.style.padding=(P.get('s')*0.25)+'px'}
+if(k==='bg')v.innerHTML='<div id="bg"></div>';
+if(k==='word')v.innerHTML='<div class="word" style="font-size:96px;padding:10px 30px">revv</div>';
+if(k==='tag')v.innerHTML='<div class="tag" style="font-size:30px;padding:6px 20px">your PC, revved up</div>';
+if(k==='ring')v.innerHTML=`<div class="ring" style="--s:${P.get('s')}px;--w:7px;margin:20px"></div>`;
+if(k==='splash')v.innerHTML=`<div id="bg"><div style="position:absolute;left:0;right:0;top:300px;display:grid;justify-items:center;gap:26px"><div class="orb" style="--s:240px"><img src="glyph.svg"></div><div class="word" style="font-size:96px">revv</div><div class="tag" style="font-size:30px">your PC, revved up</div></div></div>`;
+</script></body></html>

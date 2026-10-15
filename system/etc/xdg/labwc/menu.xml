@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<openbox_menu>
+  <menu id="client-menu">
+    <item label="Riduci a icona"><action name="Iconify"/></item>
+    <item label="Ingrandisci"><action name="ToggleMaximize"/></item>
+    <item label="Sempre in primo piano"><action name="ToggleAlwaysOnTop"/></item>
+    <separator/>
+    <item label="Chiudi"><action name="Close"/></item>
+  </menu>
+  <menu id="root-menu"/>
+</openbox_menu>

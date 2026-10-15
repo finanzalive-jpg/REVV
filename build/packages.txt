@@ -8,3 +8,7 @@ libgl1-mesa-dri mesa-vulkan-drivers libegl-mesa0
 fonts-noto-core fonts-dejavu-core fonts-noto-color-emoji adwaita-icon-theme
 brightnessctl ubuntu-drivers-common pciutils usbutils
 iputils-ping iproute2 file pci.ids usb.ids
+labwc libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0 python3-pywayland wlrctl grim
+epiphany-browser mpv plocate
+plymouth plymouth-label systemd-zram-generator libglib2.0-bin openssl
+samba smbclient cifs-utils wsdd avahi-daemon avahi-utils

@@ -1,0 +1,2 @@
+# Revv – programmi avviati insieme al gestore delle finestre
+revv-shell >/tmp/revv-shell.log 2>&1 &

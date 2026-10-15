@@ -3,3 +3,13 @@ out/
 *.iso
 *.iso.sha256
 __pycache__/
+__pycache__/
+*.pyc
+.dev/
+.g*.png
+.dbg.py
+.wk.py
+.t
+.out.txt
+.dbg.py
+.wk.py

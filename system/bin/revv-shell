@@ -1,373 +1,436 @@
 #!/usr/bin/env python3
-# Revv – finestra a tutto schermo (GTK 4 + WebKitGTK) e "ponte" verso il sistema:
-# l'interfaccia chiede, questo programma esegue con gli strumenti di Linux e risponde.
-import gi, json, os, re, subprocess, threading, time, base64, pwd
+"""Revv – il desktop.
+
+Disegna il desktop di Revv con WebKitGTK e fa da ponte verso Linux.
+Con un gestore di finestre moderno (labwc) crea:
+  - lo sfondo con le icone          (livello "background")
+  - la barra delle applicazioni     (livello "top", riserva 52 px in basso)
+  - il menu Start e il pannello rapido (livello "overlay", nascosto finché serve)
+  - una finestra vera per ogni app di Revv (Impostazioni, Esplora file, …)
+Senza gestore di finestre (vecchia sessione cage) apre tutto in un'unica finestra.
+
+Uso: revv-shell                 avvia il desktop
+     revv-shell --start         apre o chiude il menu Start (tasto Windows)
+     revv-shell --open <app>    apre un'app di Revv (es. files, settings)
+"""
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import threading
+import urllib.parse
+
+# La libreria che aggancia barra e sfondo ai bordi dello schermo deve essere caricata
+# prima di tutte le altre: se manca, il programma riparte da solo con LD_PRELOAD.
+LSLIB = '/usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so.0'
+if os.path.exists(LSLIB) and LSLIB not in os.environ.get('LD_PRELOAD', '') and os.environ.get('REVV_SINGLE') != '1':
+    os.environ['LD_PRELOAD'] = (LSLIB + ' ' + os.environ.get('LD_PRELOAD', '')).strip()
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+sys.path.insert(0, '/usr/local/lib/revv')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib', 'revv'))
+
+import gi  # noqa: E402
 gi.require_version('Gtk', '4.0')
+gi.require_version('Gdk', '4.0')
 gi.require_version('WebKit', '6.0')
-from gi.repository import Gtk, WebKit, GLib
+from gi.repository import Gdk, Gio, GLib, Gtk, WebKit  # noqa: E402
 
-URL = 'file:///opt/revv/index.html'
-HOME = os.path.expanduser('~')
-USER = pwd.getpwuid(os.getuid()).pw_name
+try:
+    gi.require_version('Gtk4LayerShell', '1.0')
+    from gi.repository import Gtk4LayerShell as LS  # noqa: E402
+except (ValueError, ImportError):
+    LS = None
 
+import revvsys  # noqa: E402
 
-def run(cmd, timeout=20):
-    try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        return p.returncode, p.stdout.strip(), p.stderr.strip()
-    except Exception as e:  # comando mancante o scaduto
-        return 1, '', str(e)
+BASE = os.environ.get('REVV_DESKTOP', '/opt/revv/index.html')
+BAR_H = 52
 
-
-def root(cmd, timeout=20):
-    """Esegue come amministratore (sudo senza password sulla chiavetta live)."""
-    rc, out, err = run(cmd, timeout)
-    if rc != 0:
-        rc, out, err = run(['sudo', '-n'] + cmd, timeout)
-    return rc, out, err
-
-
-def nm_fields(line):
-    # nmcli -t separa i campi con ":" e scrive i ":" interni come "\:"
-    parts = re.split(r'(?<!\\):', line)
-    return [p.replace('\\:', ':').replace('\\\\', '\\') for p in parts]
-
-
-# ---------------- Rete ----------------
-def net_status(_):
-    rc, out, _ = run(['nmcli', '-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device'])
-    devs = []
-    for l in out.splitlines():
-        f = nm_fields(l)
-        if len(f) >= 4:
-            devs.append({'device': f[0], 'type': f[1], 'state': f[2], 'connection': f[3]})
-    wifi = [d for d in devs if d['type'] == 'wifi']
-    eth = [d for d in devs if d['type'] == 'ethernet']
-    _, radio, _ = run(['nmcli', 'radio', 'wifi'])
-    active = next((d for d in devs if d['type'] in ('wifi', 'ethernet') and d['state'].startswith('connected')), None)
-    conn = 'none'
-    if active:
-        _, conn, _ = run(['nmcli', 'networking', 'connectivity', 'check'], timeout=12)
-    return {'nm': rc == 0, 'wifiDevice': bool(wifi), 'wifiName': wifi[0]['device'] if wifi else '', 'wifiOn': radio.strip() == 'enabled',
-            'ethernet': bool(eth), 'ethernetCable': any(d['state'] != 'unavailable' for d in eth),
-            'active': active, 'connectivity': conn or 'unknown'}
+# Programmi veri che Revv sa avviare (se installati)
+NATIVE = [
+    {'id': 'browser', 'name': 'Internet', 'desc': 'Naviga sui siti web', 'icon': 'browser',
+     'cmd': ['epiphany-browser'], 'app_ids': ['org.gnome.Epiphany', 'epiphany']},
+    {'id': 'word', 'name': 'WordCraft', 'desc': 'Scrivi lettere e documenti (.docx)', 'icon': 'm-word',
+     'cmd': ['wordcraft'], 'app_ids': ['ai.storyteller.wordcraft', 'wordcraft']},
+    {'id': 'sheet', 'name': 'GridCraft', 'desc': 'Fogli di calcolo e conti (.xlsx)', 'icon': 'm-xls',
+     'cmd': ['gridcraft'], 'app_ids': ['ai.storyteller.gridcraft', 'gridcraft']},
+    {'id': 'deck', 'name': 'DeckCraft', 'desc': 'Presentazioni (.pptx)', 'icon': 'm-ppt',
+     'cmd': ['deckcraft'], 'app_ids': ['ai.storyteller.deckcraft', 'deckcraft']},
+    {'id': 'player', 'name': 'Lettore video', 'desc': 'Guarda film e video', 'icon': 'player',
+     'cmd': ['mpv', '--player-operation-mode=pseudo-gui'], 'app_ids': ['mpv']},
+]
 
 
-def net_scan(_):
-    rc, out, err = run(['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list', '--rescan', 'yes'], timeout=30)
-    nets = {}
-    for l in out.splitlines():
-        f = nm_fields(l)
-        if len(f) < 4 or not f[1]:
-            continue
-        ssid = f[1]
-        sig = int(f[2]) if f[2].isdigit() else 0
-        sec = '' if f[3] in ('', '--') else f[3]
-        cur = nets.get(ssid)
-        if not cur or sig > cur['signal'] or f[0] == '*':
-            nets[ssid] = {'ssid': ssid, 'signal': sig, 'secure': bool(sec), 'security': sec,
-                          'inUse': f[0] == '*' or (cur or {}).get('inUse', False)}
-    return sorted(nets.values(), key=lambda n: (not n['inUse'], -n['signal']))
+def url_for(**params):
+    q = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+    return 'file://' + BASE + ('?' + q if q else '')
 
 
-def net_connect(a):
-    ssid, pw = a.get('ssid', ''), a.get('password', '')
-    cmd = ['nmcli', 'device', 'wifi', 'connect', ssid] + (['password', pw] if pw else [])
-    rc, out, err = run(cmd, timeout=60)
-    if rc == 0:
-        return {'ok': True}
-    msg = err or out
-    if 'Secrets were required' in msg or 'password' in msg.lower() or '802-1x' in msg:
-        msg = 'La password non è corretta.'
-    elif 'No network with SSID' in msg:
-        msg = 'La rete non è più raggiungibile. Avvicinati al router e riprova.'
-    return {'ok': False, 'message': msg}
-
-
-def net_radio(a):
-    rc, out, err = run(['nmcli', 'radio', 'wifi', 'on' if a.get('on') else 'off'])
-    return {'ok': rc == 0, 'message': err}
-
-
-def net_diag(_):
-    steps = []
-    st = net_status(None)
-    # 1. scheda di rete
-    if not st['nm']:
-        root(['systemctl', 'restart', 'NetworkManager'])
-        time.sleep(3)
-        st = net_status(None)
-    has = st['wifiDevice'] or st['ethernet']
-    steps.append({'name': 'Scheda di rete del computer', 'ok': has,
-                  'detail': ('Wi‑Fi' if st['wifiDevice'] else '') + (' e cavo' if st['wifiDevice'] and st['ethernet'] else ('cavo' if st['ethernet'] else '')) if has else 'non trovata: probabilmente manca il driver'})
-    if not has:
-        return {'steps': steps, 'ok': False, 'summary': 'Non trovo nessuna scheda di rete. Apri Sistema e hardware per vedere il dettaglio.'}
-    # 2. collegamento
-    fixed = ''
-    if st['wifiDevice'] and not st['wifiOn'] and not st['active']:
-        run(['nmcli', 'radio', 'wifi', 'on'])
-        time.sleep(4)
-        fixed = 'il Wi‑Fi era spento, l’ho acceso'
-        st = net_status(None)
-    if not st['active'] and st['wifiDevice']:
-        run(['nmcli', 'device', 'connect', st['wifiName']], timeout=20)
-        st = net_status(None)
-    act = st['active']
-    steps.append({'name': 'Collegamento alla rete', 'ok': bool(act),
-                  'detail': (fixed + ' · ' if fixed else '') + (('Wi‑Fi ' + act['connection']) if act and act['type'] == 'wifi' else ('cavo di rete' if act else 'non collegato: scegli una rete qui sotto'))})
-    if not act:
-        return {'steps': steps, 'ok': False, 'summary': 'Il computer non è collegato a nessuna rete. Scegli la tua rete Wi‑Fi qui sotto o collega il cavo.'}
-    # 3. router
-    _, route, _ = run(['ip', 'route', 'show', 'default'])
-    m = re.search(r'default via (\S+)', route)
-    gw = m.group(1) if m else ''
-    rc = run(['ping', '-c', '1', '-W', '2', gw])[0] if gw else 1
-    steps.append({'name': 'Router', 'ok': rc == 0, 'detail': ('risponde (' + gw + ')') if rc == 0 else 'non risponde'})
-    if rc != 0:
-        root(['nmcli', 'device', 'reapply', act['device']])
-        return {'steps': steps, 'ok': False, 'summary': 'Il router non risponde. Prova a spegnerlo e riaccenderlo, poi controlla di nuovo.'}
-    # 4. internet
-    rc = run(['ping', '-c', '1', '-W', '3', '1.1.1.1'])[0]
-    if rc != 0 and st.get('connectivity') == 'full':
-        rc = 0  # alcune reti bloccano il ping ma internet funziona
-    steps.append({'name': 'Uscita verso internet', 'ok': rc == 0, 'detail': 'ok' if rc == 0 else 'bloccata'})
-    if rc != 0:
-        return {'steps': steps, 'ok': False, 'summary': 'Il router c’è ma internet no. Di solito è un problema della linea: controlla le luci del router o chiama il gestore.'}
-    # 5. dns
-    t0 = time.time()
-    rc = run(['getent', 'hosts', 'ubuntu.com'], timeout=8)[0]
-    ms = int((time.time() - t0) * 1000)
-    steps.append({'name': 'Traduzione dei nomi dei siti (DNS)', 'ok': rc == 0, 'detail': f'ok · {ms} ms' if rc == 0 else 'non funziona'})
-    if rc != 0:
-        return {'steps': steps, 'ok': False, 'summary': 'Internet funziona ma i nomi dei siti non vengono trovati (DNS). Riavvia il router; se non basta, scrivimi.'}
-    return {'steps': steps, 'ok': True, 'summary': 'Tutto a posto: internet funziona.' + (' (' + fixed + ')' if fixed else '')}
-
-
-# ---------------- Audio e luminosità ----------------
-def audio_get(_):
-    rc, out, _ = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'])
-    if rc != 0:
-        return {'available': False}
-    m = re.search(r'([\d.]+)', out)
-    vol = round(float(m.group(1)) * 100) if m else 0
-    _, info, _ = run(['wpctl', 'inspect', '@DEFAULT_AUDIO_SINK@'])
-    d = re.search(r'node\.description = "([^"]+)"', info)
-    return {'available': True, 'volume': vol, 'muted': 'MUTED' in out, 'name': d.group(1) if d else ''}
-
-
-def audio_set(a):
-    v = max(0, min(100, int(a.get('volume', 50))))
-    run(['wpctl', 'set-volume', '-l', '1.0', '@DEFAULT_AUDIO_SINK@', f'{v / 100:.2f}'])
-    run(['wpctl', 'set-mute', '@DEFAULT_AUDIO_SINK@', '1' if v == 0 else '0'])
-    return {'ok': True}
-
-
-def bright_get(_):
-    rc, out, _ = run(['brightnessctl', '-m', '-c', 'backlight'])
-    if rc != 0 or not out:
-        return {'available': False}
-    f = out.split(',')
-    return {'available': True, 'percent': int(f[3].rstrip('%')) if len(f) > 3 else 100}
-
-
-def bright_set(a):
-    p = max(5, min(100, int(a.get('percent', 100))))
-    rc = root(['brightnessctl', '-q', '-c', 'backlight', 'set', f'{p}%'])[0]
-    return {'ok': rc == 0}
-
-
-def power(a):
-    act = 'reboot' if a.get('action') == 'reboot' else 'poweroff'
-    run(['sync'])
-    rc, _, err = root(['systemctl', act])
-    return {'ok': rc == 0, 'message': err}
-
-
-# ---------------- Sistema e hardware ----------------
-def sys_info(_):
-    mem = {}
-    for l in open('/proc/meminfo'):
-        k, v = l.split(':')
-        mem[k] = int(v.split()[0]) * 1024
-    cpu = ''
-    for l in open('/proc/cpuinfo'):
-        if l.startswith('model name'):
-            cpu = l.split(':', 1)[1].strip()
-            break
-    cores = os.cpu_count()
-    _, boot, _ = run(['systemd-analyze'])
-    m = re.search(r'graphical\.target reached after ([\d.]+)(ms|s|min)', boot) or re.search(r'=\s*([\d.]+)(ms|s|min)', boot)
-    boot_s = None
-    if m:
-        boot_s = float(m.group(1)) / (1000 if m.group(2) == 'ms' else 1) * (60 if m.group(2) == 'min' else 1)
-    hw = []
-    _, out, _ = run(['lspci', '-vmmk'])
-    for rec in out.split('\n\n'):
-        r = {}
-        for l in rec.splitlines():
-            if ':' in l:
-                k, v = l.split(':', 1)
-                r[k.strip()] = v.strip()
-        cls = r.get('Class', '')
-        kind = None
-        if cls in ('VGA compatible controller', '3D controller', 'Display controller'):
-            kind = 'video'
-        elif cls == 'Network controller':
-            kind = 'wifi'
-        elif cls == 'Ethernet controller':
-            kind = 'ethernet'
-        elif cls in ('Audio device', 'Multimedia audio controller'):
-            kind = 'audio'
-        if kind:
-            hw.append({'kind': kind, 'name': (r.get('Vendor', '') + ' ' + r.get('Device', '')).strip(),
-                       'driver': r.get('Driver', '')})
-    _, usb, _ = run(['lsusb'])
-    for l in usb.splitlines():
-        name = l.split(' ', 6)[-1] if l.count(' ') >= 6 else l
-        low = name.lower()
-        kind = 'webcam' if ('camera' in low or 'webcam' in low) else 'printer' if 'printer' in low or 'deskjet' in low or 'laserjet' in low else 'bluetooth' if 'bluetooth' in low else None
-        if kind:
-            hw.append({'kind': kind, 'name': name, 'driver': 'usb'})
-    bat = None
-    for b in ('BAT0', 'BAT1'):
-        p = f'/sys/class/power_supply/{b}/capacity'
-        if os.path.exists(p):
-            st = open(f'/sys/class/power_supply/{b}/status').read().strip()
-            bat = {'percent': int(open(p).read()), 'status': st}
-            break
-    st = os.statvfs('/')
-    return {'memTotal': mem.get('MemTotal', 0), 'memUsed': mem.get('MemTotal', 0) - mem.get('MemAvailable', 0),
-            'cpu': cpu, 'cores': cores, 'kernel': os.uname().release, 'boot': boot_s, 'hardware': hw,
-            'battery': bat, 'live': os.path.exists('/run/casper') or os.path.exists('/cdrom/casper'),
-            'diskFree': st.f_bavail * st.f_frsize}
-
-
-# ---------------- File e dischi ----------------
-def fs_roots(_):
-    rc, out, _ = run(['lsblk', '-J', '-b', '-o', 'NAME,PATH,LABEL,SIZE,FSTYPE,MOUNTPOINTS,TYPE,RM'])
-    drives = []
-    try:
-        def walk(nodes):
-            for n in nodes:
-                if n.get('type') == 'part' or (n.get('type') == 'disk' and n.get('fstype')):
-                    fs = n.get('fstype') or ''
-                    mps = [m for m in (n.get('mountpoints') or []) if m]
-                    live = any(m.startswith(('/cdrom', '/rofs', '/run/live', '/isodevice')) for m in mps)
-                    if fs in ('ntfs', 'vfat', 'exfat', 'ext4', 'btrfs', 'xfs') and not live and int(n.get('size') or 0) > 200 * 1024 * 1024:
-                        drives.append({'dev': n['path'], 'label': n.get('label') or '', 'size': int(n.get('size') or 0),
-                                       'fs': fs, 'removable': bool(n.get('rm')), 'mount': mps[0] if mps else ''})
-                walk(n.get('children') or [])
-        walk(json.loads(out).get('blockdevices', []))
-    except Exception:
-        pass
-    return {'home': HOME, 'drives': drives}
-
-
-def fs_mount(a):
-    dev = a.get('dev', '')
-    if not re.match(r'^/dev/[\w-]+$', dev):
-        return {'ok': False, 'message': 'disco non valido'}
-    rc, out, _ = run(['lsblk', '-no', 'MOUNTPOINTS,FSTYPE,LABEL', dev])
-    first = out.splitlines()[0] if out else ''
-    for m in first.split():
-        if m.startswith('/'):
-            return {'ok': True, 'mount': m}
-    _, fs, _ = run(['lsblk', '-no', 'FSTYPE', dev])
-    _, label, _ = run(['lsblk', '-no', 'LABEL', dev])
-    name = re.sub(r'[^\w.-]', '_', label.strip() or os.path.basename(dev))
-    mp = f'/media/{USER}/{name}'
-    root(['mkdir', '-p', mp])
-    uid, gid = os.getuid(), os.getgid()
-    fs = fs.strip()
-    if fs == 'ntfs':
-        rc, _, err = root(['mount', '-t', 'ntfs3', '-o', f'ro,uid={uid},gid={gid}', dev, mp])
-    elif fs in ('vfat', 'exfat'):
-        rc, _, err = root(['mount', '-o', f'ro,uid={uid},gid={gid}', dev, mp])
-    else:
-        rc, _, err = root(['mount', '-o', 'ro', dev, mp])
-    if rc != 0:
-        msg = err
-        if 'hibernat' in err.lower() or 'dirty' in err.lower() or 'unclean' in err.lower():
-            msg = 'Windows non è stato spento del tutto (avvio rapido attivo). Da Windows tieni premuto Maiusc mentre premi Arresta, poi riprova.'
-        return {'ok': False, 'message': msg}
-    return {'ok': True, 'mount': mp}
-
-
-def fs_list(a):
-    path = os.path.abspath(os.path.expanduser(a.get('path') or HOME))
-    dirs, files = [], []
-    try:
-        with os.scandir(path) as it:
-            for e in it:
-                if e.name.startswith('.') or e.name in ('$RECYCLE.BIN', 'System Volume Information', 'lost+found'):
-                    continue
-                try:
-                    st = e.stat()
-                    if e.is_dir():
-                        dirs.append({'name': e.name, 'mtime': int(st.st_mtime * 1000)})
-                    else:
-                        files.append({'name': e.name, 'size': st.st_size, 'mtime': int(st.st_mtime * 1000)})
-                except OSError:
-                    pass
-                if len(dirs) + len(files) > 5000:
-                    break
-    except PermissionError:
-        return {'ok': False, 'message': 'Non hai il permesso di aprire questa cartella.'}
-    except FileNotFoundError:
-        return {'ok': False, 'message': 'La cartella non esiste più.'}
-    return {'ok': True, 'path': path, 'dirs': dirs, 'files': files}
-
-
-def fs_read(a):
-    path = os.path.abspath(a.get('path', ''))
-    size = os.path.getsize(path)
-    if size > 80 * 1024 * 1024:
-        return {'ok': False, 'message': 'File troppo grande per l’anteprima (oltre 80 MB).'}
-    with open(path, 'rb') as f:
-        return {'ok': True, 'data': base64.b64encode(f.read()).decode()}
-
-
-CMDS = {'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
-        'net.diag': net_diag, 'audio.get': audio_get, 'audio.set': audio_set, 'bright.get': bright_get,
-        'bright.set': bright_set, 'power': power, 'sys.info': sys_info, 'fs.roots': fs_roots,
-        'fs.mount': fs_mount, 'fs.list': fs_list, 'fs.read': fs_read}
+def transparent(widget):
+    css = Gtk.CssProvider()
+    css.load_from_data(b'window, window.background { background: transparent; }')
+    Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css,
+                                              Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
 
 class Revv(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id='org.revv.Shell')
+        super().__init__(application_id='org.revv.Shell',
+                         flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.views = {}          # nome -> WebView
+        self.windows = {}        # nome -> Gtk.Window
+        self.started = False
+        self.multi = False
+        self.toplevels = None
+        self.popup_kind = None
+        self.drop = None
 
-    def do_activate(self):
-        win = Gtk.ApplicationWindow(application=self, title='Revv')
-        self.view = view = WebKit.WebView()
+    # ---------------- riga di comando ----------------
+    def do_command_line(self, cmd):
+        args = cmd.get_arguments()[1:]
+        if not self.started:
+            self.started = True
+            self.boot()
+        if '--start' in args:
+            self.popup_toggle('start')
+        elif '--open' in args:
+            i = args.index('--open')
+            if i + 1 < len(args):
+                self.app_open({'id': args[i + 1]})
+        return 0
+
+    # ---------------- avvio ----------------
+    def boot(self):
+        self.hold()
+        transparent(None)
+        self.multi = LS is not None and LS.is_supported() and os.environ.get('REVV_SINGLE') != '1'
+        if not self.multi:
+            win = self.make_window('full', url_for(role='full'), Gtk.ApplicationWindow(application=self))
+            win.set_decorated(False)
+            win.fullscreen()
+            win.present()
+            return
+        # sfondo con le icone
+        d = Gtk.Window(application=self)
+        LS.init_for_window(d)
+        LS.set_layer(d, LS.Layer.BACKGROUND)
+        LS.set_namespace(d, 'revv-desktop')
+        for e in (LS.Edge.TOP, LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
+            LS.set_anchor(d, e, True)
+        LS.set_exclusive_zone(d, -1)
+        LS.set_keyboard_mode(d, LS.KeyboardMode.ON_DEMAND)
+        self.make_window('desktop', url_for(role='desktop'), d)
+        d.present()
+        # barra delle applicazioni
+        p = Gtk.Window(application=self)
+        LS.init_for_window(p)
+        LS.set_layer(p, LS.Layer.TOP)
+        LS.set_namespace(p, 'revv-panel')
+        for e in (LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
+            LS.set_anchor(p, e, True)
+        LS.set_exclusive_zone(p, BAR_H)
+        p.set_default_size(800, BAR_H)
+        self.make_window('panel', url_for(role='panel'), p)
+        self.views['panel'].set_size_request(-1, BAR_H)
+        p.present()
+        # menu Start e pannello rapido (sopra a tutto, nascosto)
+        o = Gtk.Window(application=self)
+        LS.init_for_window(o)
+        LS.set_layer(o, LS.Layer.OVERLAY)
+        LS.set_namespace(o, 'revv-popup')
+        for e in (LS.Edge.TOP, LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
+            LS.set_anchor(o, e, True)
+        LS.set_exclusive_zone(o, -1)
+        LS.set_keyboard_mode(o, LS.KeyboardMode.EXCLUSIVE)
+        self.make_window('popup', url_for(role='popup'), o)
+        # elenco delle finestre aperte
+        try:
+            from revvwl.toplevels import Toplevels
+            self.toplevels = Toplevels(lambda lst: GLib.idle_add(self.push_toplevels, lst))
+            if not self.toplevels.start():
+                self.toplevels = None
+        except Exception as e:  # senza elenco finestre la barra mostra solo le app di Revv
+            print('elenco finestre non disponibile:', e, file=sys.stderr)
+            self.toplevels = None
+        # Revv Drop: ricezione file dai dispositivi vicini
+        try:
+            import revvdrop
+            self.drop = revvdrop.Drop(
+                on_devices=lambda lst: GLib.idle_add(self.broadcast, 'window.__revvDropDevices && window.__revvDropDevices(%s)' % json.dumps(lst)),
+                on_request=lambda req: GLib.idle_add(self.popup_show, {'kind': 'drop', 'data': req}),
+                on_event=lambda ev: GLib.idle_add(self.drop_event, ev))
+            if not self.drop.start():
+                self.drop = None
+        except Exception as e:
+            print('Revv Drop non disponibile:', e, file=sys.stderr)
+            self.drop = None
+        # indice per la ricerca dei file, aggiornato con calma dopo l'avvio
+        GLib.timeout_add_seconds(90, self.index_later)
+
+    def make_window(self, name, uri, win):
+        view = WebKit.WebView()
+        view.set_background_color(Gdk.RGBA(0, 0, 0, 0))
         s = view.get_settings()
         s.set_allow_file_access_from_file_urls(True)
         s.set_allow_universal_access_from_file_urls(True)
         s.set_enable_developer_extras(True)
+        s.set_javascript_can_open_windows_automatically(False)
+        if hasattr(s, 'set_enable_write_console_messages_to_stdout'):
+            s.set_enable_write_console_messages_to_stdout(True)
         ucm = view.get_user_content_manager()
         ucm.register_script_message_handler('revv', None)
-        ucm.connect('script-message-received::revv', self.on_message)
-        view.load_uri(URL)
-        win.set_decorated(False)
+        ucm.connect('script-message-received::revv', self.on_message, name)
+        view.connect('context-menu', lambda *a: True)
+        view.load_uri(uri)
         win.set_child(view)
-        win.present()
+        self.views[name] = view
+        self.windows[name] = win
+        return win
 
-    def on_message(self, _ucm, value):
+    # ---------------- messaggi dal desktop ----------------
+    def on_message(self, _ucm, value, name):
         try:
             msg = json.loads(value.to_json(0))
         except Exception:
             return
-        threading.Thread(target=self.handle, args=(msg,), daemon=True).start()
+        cmd = msg.get('cmd', '')
+        args = msg.get('args') or {}
+        ui = UI_CMDS.get(cmd)
+        if os.environ.get('REVV_DEBUG'):
+            print('cmd', name, cmd, json.dumps(args)[:200], file=sys.stderr, flush=True)
+        if ui:  # comandi dell'interfaccia: subito, nel thread principale
+            try:
+                res = {'data': ui(self, args, name)}
+            except Exception as e:
+                res = {'error': str(e)}
+            self.reply(name, msg.get('id', 0), res)
+            return
+        threading.Thread(target=self.run_cmd, args=(name, msg), daemon=True).start()
 
-    def handle(self, msg):
-        fn = CMDS.get(msg.get('cmd'))
+    def run_cmd(self, name, msg):
+        fn = revvsys.CMDS.get(msg.get('cmd'))
         try:
             res = {'data': fn(msg.get('args') or {})} if fn else {'error': 'comando sconosciuto'}
         except Exception as e:
             res = {'error': str(e)}
-        js = 'window.__revvReply(%d, %s)' % (int(msg.get('id', 0)), json.dumps(res))
-        GLib.idle_add(lambda: (self.view.evaluate_javascript(js, -1, None, None, None, None, None), False)[1])
+        GLib.idle_add(self.reply, name, msg.get('id', 0), res)
 
+    def reply(self, name, mid, res):
+        self.js(name, 'window.__revvReply(%d, %s)' % (int(mid), json.dumps(res)))
+        return False
+
+    def js(self, name, code):
+        v = self.views.get(name)
+        if v:
+            v.evaluate_javascript(code, -1, None, None, None, None, None)
+
+    def broadcast(self, code, skip=None):
+        for n in list(self.views):
+            if n != skip:
+                self.js(n, code)
+
+    # ---------------- finestre ----------------
+    def push_toplevels(self, lst):
+        mine = {}
+        for n, w in self.windows.items():
+            if n.startswith('app:'):
+                mine[w.get_title() or ''] = n[4:]
+        out = []
+        for t in lst:
+            t = dict(t)
+            if t['app_id'] == 'org.revv.Shell':
+                t['revv'] = mine.get(t['title'])
+            else:
+                for a in NATIVE:
+                    if t['app_id'] in a['app_ids'] or t['app_id'].lower().startswith(a['id']):
+                        t['native'] = a['id']
+            out.append(t)
+        self.js('panel', 'window.__revvToplevels && window.__revvToplevels(%s)' % json.dumps(out))
+        return False
+
+    def app_open(self, a, _name=None):
+        aid = str(a.get('id', ''))
+        key = 'app:' + aid
+        if key in self.windows:
+            w = self.windows[key]
+            w.present()
+            if a.get('goto') is not None:
+                self.js(key, 'window.__revvGoto && window.__revvGoto(%s)' % json.dumps(a.get('goto')))
+            return {'ok': True}
+        if not self.multi:
+            return {'ok': False}
+        w = Gtk.Window(application=self)
+        w.set_decorated(False)
+        w.set_title(a.get('title') or aid)
+        w.set_default_size(int(a.get('w', 820)), int(a.get('h', 560)))
+        goto = a.get('goto')
+        self.make_window(key, url_for(role='app', app=aid,
+                                      goto=json.dumps(goto) if goto is not None else None), w)
+
+        def gone(*_):
+            self.windows.pop(key, None)
+            self.views.pop(key, None)
+            return False
+        w.connect('close-request', gone)
+        w.present()
+        return {'ok': True}
+
+    def _surface_args(self, name, a):
+        w = self.windows.get(name)
+        if not w:
+            return None, None
+        seat = Gdk.Display.get_default().get_default_seat()
+        return w, seat.get_pointer() if seat else None
+
+    def win_move(self, a, name):
+        w, dev = self._surface_args(name, a)
+        if w and dev and w.get_surface():
+            w.get_surface().begin_move(dev, 1, float(a.get('x', 0)), float(a.get('y', 0)), Gdk.CURRENT_TIME)
+        return {'ok': True}
+
+    EDGES = {'n': Gdk.SurfaceEdge.NORTH, 's': Gdk.SurfaceEdge.SOUTH, 'e': Gdk.SurfaceEdge.EAST,
+             'w': Gdk.SurfaceEdge.WEST, 'ne': Gdk.SurfaceEdge.NORTH_EAST, 'nw': Gdk.SurfaceEdge.NORTH_WEST,
+             'se': Gdk.SurfaceEdge.SOUTH_EAST, 'sw': Gdk.SurfaceEdge.SOUTH_WEST}
+
+    def win_resize(self, a, name):
+        w, dev = self._surface_args(name, a)
+        edge = self.EDGES.get(a.get('edge', 'se'))
+        if w and dev and edge is not None and w.get_surface():
+            w.get_surface().begin_resize(edge, dev, 1, float(a.get('x', 0)), float(a.get('y', 0)), Gdk.CURRENT_TIME)
+        return {'ok': True}
+
+    def win_state(self, a, name):
+        w = self.windows.get(name)
+        if not w:
+            return {'ok': False}
+        act = a.get('action')
+        if act == 'min':
+            w.minimize()
+        elif act == 'max':
+            w.unmaximize() if w.is_maximized() else w.maximize()
+        elif act == 'close':
+            w.close()
+        elif act == 'title':
+            w.set_title(str(a.get('title', '')))
+        return {'ok': True, 'maximized': w.is_maximized()}
+
+    # ---------------- menu Start / pannello rapido ----------------
+    def popup_toggle(self, kind):
+        if self.popup_kind == kind:
+            self.popup_hide()
+        else:
+            self.popup_show({'kind': kind})
+
+    def popup_show(self, a, _name=None):
+        o = self.windows.get('popup')
+        if not o:
+            return {'ok': False}
+        self.popup_kind = a.get('kind', 'start')
+        o.present()
+        self.js('popup', 'window.__revvPopup && window.__revvPopup(%s, %s)' % (json.dumps(self.popup_kind), json.dumps(a.get('data'))))
+        self.js('panel', 'window.__revvPopupState && window.__revvPopupState(%s)' % json.dumps(self.popup_kind))
+        return {'ok': True}
+
+    def popup_hide(self, _a=None, _name=None):
+        o = self.windows.get('popup')
+        if o:
+            o.set_visible(False)
+        self.popup_kind = None
+        self.js('panel', 'window.__revvPopupState && window.__revvPopupState(null)')
+        return {'ok': True}
+
+    # ---------------- programmi veri ----------------
+    def native_list(self, _a=None, _name=None):
+        return [dict(n, installed=bool(shutil.which(n['cmd'][0]))) for n in NATIVE]
+
+    def native_open(self, a, _name=None):
+        nid = a.get('id')
+        app = next((n for n in NATIVE if n['id'] == nid), None)
+        cmd = list(app['cmd']) if app else None
+        if not cmd or not shutil.which(cmd[0]):
+            return {'ok': False, 'message': 'Programma non installato.'}
+        if a.get('path'):
+            cmd.append(a['path'])
+        if a.get('url'):
+            cmd.append(a['url'])
+        env = dict(os.environ)
+        env.pop('LD_PRELOAD', None)
+        subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        return {'ok': True}
+
+    def top_action(self, a, _name=None):
+        if not self.toplevels:
+            return {'ok': False}
+        act, tid = a.get('action'), a.get('id')
+        ok = {'activate': self.toplevels.activate, 'minimize': self.toplevels.minimize,
+              'close': self.toplevels.close}.get(act, lambda _t: False)(tid)
+        return {'ok': ok}
+
+    def state_changed(self, a, name):
+        self.broadcast('window.__revvSync && window.__revvSync(%s)' % json.dumps(a.get('state') or {}), skip=name)
+        return {'ok': True}
+
+    # ---------------- Revv Drop ----------------
+    def drop_event(self, ev):
+        if ev.get('type') == 'received':
+            self.popup_show({'kind': 'dropdone', 'data': ev})
+        self.broadcast('window.__revvDropEvent && window.__revvDropEvent(%s)' % json.dumps(ev))
+        return False
+
+    def drop_cmd(self, a, name):
+        if not self.drop:
+            return {'ok': False, 'message': 'Revv Drop non è attivo.'}
+        act = a.get('action')
+        if act == 'devices':
+            return {'ok': True, 'devices': self.drop.list_devices(), 'conf': self.drop.conf}
+        if act == 'scan':
+            return {'ok': True, 'devices': self.drop.scan(), 'conf': self.drop.conf}
+        if act == 'answer':
+            return {'ok': self.drop.answer(a.get('id'), a.get('accept'))}
+        if act == 'conf':
+            return {'ok': True, 'conf': self.drop.save_conf(a.get('alias'), a.get('receive'))}
+        if act == 'send':
+            def work():
+                res = self.drop.send(a.get('device'), a.get('paths') or [],
+                                     progress=lambda p: GLib.idle_add(self.js, name, 'window.__revvDropProgress && window.__revvDropProgress(%s)' % json.dumps(p)))
+                GLib.idle_add(self.js, name, 'window.__revvDropProgress && window.__revvDropProgress(%s)' % json.dumps(dict(res, stage='done')))
+            threading.Thread(target=work, daemon=True).start()
+            return {'ok': True}
+        return {'ok': False}
+
+    def index_later(self):
+        threading.Thread(target=lambda: revvsys.index_update({}), daemon=True).start()
+        GLib.timeout_add_seconds(3600, self.index_later)
+        return False
+
+    def open_with(self, a, _name=None):
+        # apre un file col programma giusto: video e musica col lettore, Office con i Craft
+        path = a.get('path') or ''
+        ext = os.path.splitext(path)[1].lower()
+        table = {'.docx': 'word', '.doc': 'word', '.odt': 'word', '.rtf': 'word', '.xlsx': 'sheet', '.xls': 'sheet',
+                 '.ods': 'sheet', '.csv': 'sheet', '.pptx': 'deck', '.ppt': 'deck', '.odp': 'deck',
+                 '.mp4': 'player', '.mkv': 'player', '.avi': 'player', '.mov': 'player', '.webm': 'player',
+                 '.mp3': 'player', '.flac': 'player', '.ogg': 'player', '.wav': 'player', '.m4a': 'player',
+                 '.html': 'browser', '.htm': 'browser'}
+        nid = a.get('app') or table.get(ext)
+        if not nid:
+            return {'ok': False}
+        return self.native_open({'id': nid, 'path': path})
+
+    def info(self, _a, name):
+        return {'multi': self.multi, 'toplevels': bool(self.toplevels), 'role': name}
+
+
+UI_CMDS = {
+    'app.open': Revv.app_open, 'win.move': Revv.win_move, 'win.resize': Revv.win_resize,
+    'win.state': Revv.win_state, 'popup.show': Revv.popup_show, 'popup.hide': Revv.popup_hide,
+    'native.list': Revv.native_list, 'native.open': Revv.native_open, 'top.action': Revv.top_action,
+    'state.changed': Revv.state_changed, 'shell.info': Revv.info, 'drop': Revv.drop_cmd,
+    'open.with': Revv.open_with,
+}
 
 if __name__ == '__main__':
-    Revv().run(None)
+    sys.exit(Revv().run(sys.argv))

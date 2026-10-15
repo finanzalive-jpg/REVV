@@ -37,11 +37,13 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then V="${GITHUB_REF#refs/tags/v}";
           elif [ -n "${{ github.event.inputs.version }}" ]; then V="${{ github.event.inputs.version }}";
-          else V="0.3-dev.$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}"; fi
+          else V="0.4-dev.$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}"; fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Build ISO
-        run: sudo WORK=/mnt/revv-work ./build/build-iso.sh "${{ steps.v.outputs.version }}"
+        run: sudo --preserve-env=GITHUB_TOKEN WORK=/mnt/revv-work ./build/build-iso.sh "${{ steps.v.outputs.version }}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Publish release (tags)
         if: startsWith(github.ref, 'refs/tags/v')

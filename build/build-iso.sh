@@ -47,17 +47,29 @@ chroot "$CH" apt-get update -qq
 # shellcheck disable=SC2046
 chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat "$ROOT/build/packages.txt")
 
+log "3b/9 Suite Office: WordCraft, GridCraft, DeckCraft (ultima versione ufficiale)"
+mkdir -p "$CH/tmp/craft"
+for app in wordcraft gridcraft deckcraft; do
+  url="$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/storytold/$app/releases/latest" 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((a["browser_download_url"] for a in d.get("assets", []) if a["name"].endswith("-linux-x86_64.deb")), ""))' 2>/dev/null || true)"
+  if [ -n "$url" ] && curl -fsSL -o "$CH/tmp/craft/$app.deb" "$url"; then
+    chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "/tmp/craft/$app.deb" || echo "ATTENZIONE: $app non installato"
+  else
+    echo "ATTENZIONE: non trovo il pacchetto di $app, continuo senza"
+  fi
+done
+rm -rf "$CH/tmp/craft"
+
 log "4/9 Desktop di Revv (offline: caratteri e lettori di file inclusi)"
 D="$CH/opt/revv"; mkdir -p "$D/fonts" "$D/lib"
 NPM="$WORK/npm"; mkdir -p "$NPM"
-( cd "$NPM" && for p in @fontsource/onest@5 @fontsource/unbounded@5 @fontsource/jetbrains-mono@5 @fontsource/source-serif-4@5 pdfjs-dist@3.11.174 mammoth@1.6.0 xlsx@0.18.5; do npm pack -q "$p" >/dev/null; done
+# NPM_CACHE: cartella con i pacchetti già scaricati (facoltativa, accelera le prove locali)
+[ -n "${NPM_CACHE:-}" ] && [ -d "$NPM_CACHE" ] && cp "$NPM_CACHE"/*.tgz "$NPM/" 2>/dev/null || true
+( cd "$NPM" && for p in @fontsource/onest@5 @fontsource/unbounded@5 @fontsource/jetbrains-mono@5 @fontsource/source-serif-4@5 pdfjs-dist@3.11.174 mammoth@1.6.0 xlsx@0.18.5; do n="$(echo "$p" | sed 's/^@//; s/\//-/; s/@.*//')"; ls "$n"-*.tgz >/dev/null 2>&1 || npm pack -q "$p" >/dev/null; done
   for f in *.tgz; do mkdir -p "x/${f%.tgz}"; tar xzf "$f" -C "x/${f%.tgz}"; done )
-python3 "$ROOT/build/offline-desktop.py" "$ROOT/desktop/index.html" "$NPM/x" "$D"
-cp "$ROOT/LICENSE" "$D/LICENZA-revv.txt"; cp "$ROOT/NOTICE.md" "$D/CREDITI.md"
+"$ROOT/build/install-system.sh" "$CH" "$NPM/x"
 
 log "5/9 Configurazione di sistema"
-install -m 755 "$ROOT/system/bin/revv-shell" "$ROOT/system/bin/revv-session" "$CH/usr/local/bin/"
-cp -r "$ROOT/system/etc/." "$CH/etc/"
 for d in Documenti Immagini Musica Download Video; do mkdir -p "$CH/etc/skel/$d"; done
 echo revv > "$CH/etc/hostname"; printf '127.0.0.1 localhost\n127.0.1.1 revv\n' > "$CH/etc/hosts"
 grep -q XKB_DEFAULT_LAYOUT "$CH/etc/environment" || echo 'XKB_DEFAULT_LAYOUT=it' >> "$CH/etc/environment"
@@ -67,7 +79,15 @@ chroot "$CH" sh -c '
   systemctl enable greetd NetworkManager >/dev/null 2>&1
   systemctl disable getty@tty1.service >/dev/null 2>&1 || true
   systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1 || true
+  systemctl enable smbd nmbd revv-wsdd avahi-daemon >/dev/null 2>&1 || true
   systemctl set-default graphical.target >/dev/null 2>&1'
+# condivisione cartelle (Samba): le cartelle scelte in Esplora file finiscono in revv-shares.conf
+if [ -f "$CH/etc/samba/smb.conf" ] && ! grep -q revv-shares "$CH/etc/samba/smb.conf"; then
+  sed -i '/^\[global\]/a\   include = /etc/samba/revv-shares.conf' "$CH/etc/samba/smb.conf"
+  grep -q '^ *map to guest' "$CH/etc/samba/smb.conf" || sed -i '/^\[global\]/a\   map to guest = bad user' "$CH/etc/samba/smb.conf"
+  sed -i "s/^\( *\)workgroup = .*/\1workgroup = WORKGROUP/" "$CH/etc/samba/smb.conf"
+fi
+touch "$CH/etc/samba/revv-shares.conf"
 cat > "$CH/etc/os-release.revv" <<EOF
 PRETTY_NAME="Revv $VERSION"
 NAME="Revv"
@@ -77,7 +97,11 @@ ID_LIKE=ubuntu
 HOME_URL="https://github.com/finanzalive-jpg/revv"
 EOF
 
-log "6/9 Avvio live (initramfs)"
+log "6/9 Schermata di avvio e avvio live (initramfs)"
+if [ -f "$CH/usr/share/plymouth/themes/revv/revv.plymouth" ]; then
+  chroot "$CH" update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth /usr/share/plymouth/themes/revv/revv.plymouth 200
+  chroot "$CH" update-alternatives --set default.plymouth /usr/share/plymouth/themes/revv/revv.plymouth
+fi
 chroot "$CH" update-initramfs -c -k all
 KVER="$(ls "$CH/lib/modules" | sort -V | tail -1)"
 
@@ -101,6 +125,7 @@ mksquashfs "$CH" "$ISO/casper/filesystem.squashfs" -comp zstd -Xcompression-leve
 printf '%s' "$(du -sx --block-size=1 "$CH" | cut -f1)" > "$ISO/casper/filesystem.size"
 echo "Revv $VERSION - live amd64 $(date +%Y%m%d)" > "$ISO/.disk/info"
 cp "$ROOT/build/grub.cfg" "$ISO/boot/grub/grub.cfg"
+mkdir -p "$ISO/boot/grub/themes/revv" && cp "$ROOT/system/share/grub-theme/"* "$ISO/boot/grub/themes/revv/"
 ( cd "$ISO" && find . -type f ! -name md5sum.txt -print0 | xargs -0 md5sum > md5sum.txt )
 
 log "9/9 ISO avviabile (BIOS + UEFI)"

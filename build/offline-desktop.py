@@ -23,12 +23,19 @@ for family, pk, slug, faces in FONTS:
     base = pkg(pk) / 'files'
     shutil.copy(base.parent / 'LICENSE', dest / 'lib' / f'LICENZA-{pk}.txt')
     for w, st in faces:
+        # intervalli di caratteri di ogni variante, presi dal CSS del pacchetto
+        sheet = base.parent / (f'{w}.css' if st == 'normal' else f'{w}-italic.css')
+        ranges = {}
+        if sheet.exists():
+            for m in re.finditer(r'/\* \S+?-(latin(?:-ext)?)-\d+-\w+ \*/.*?unicode-range:\s*([^;]+);', sheet.read_text(), re.S):
+                ranges[m.group(1)] = m.group(2).strip()
         for sub in ('latin', 'latin-ext'):
             f = base / f'{slug}-{sub}-{w}-{st}.woff2'
             if f.exists():
                 shutil.copy(f, dest / 'fonts')
+                ur = f';unicode-range:{ranges[sub]}' if sub in ranges else ''
                 css.append(f"@font-face{{font-family:'{family}';font-style:{st};font-weight:{w};"
-                           f"font-display:swap;src:url(fonts/{f.name}) format('woff2')}}")
+                           f"font-display:swap;src:url(fonts/{f.name}) format('woff2'){ur}}}")
 (dest / 'fonts.css').write_text('\n'.join(css) + '\n')
 
 LIBS = {'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js': ('xlsx', 'dist/xlsx.full.min.js'),

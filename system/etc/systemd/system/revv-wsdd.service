@@ -1,0 +1,14 @@
+[Unit]
+Description=Revv: visibile nella "Rete" dei PC Windows (wsdd)
+After=network-online.target smbd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/bin/wsdd --shortlog --workgroup WORKGROUP
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

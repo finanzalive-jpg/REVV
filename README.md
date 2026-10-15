@@ -14,7 +14,7 @@
 <p align="center">
   <img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-2186c9?style=flat-square">
   <img alt="Based on Ubuntu 26.04 LTS" src="https://img.shields.io/badge/based%20on-Ubuntu%2026.04%20LTS-e95420?style=flat-square">
-  <img alt="Status: early preview" src="https://img.shields.io/badge/status-early%20preview-f2a548?style=flat-square">
+  <img alt="Status: preview 0.4" src="https://img.shields.io/badge/status-preview%200.4-f2a548?style=flat-square">
   <img alt="64-bit, 4 GB RAM" src="https://img.shields.io/badge/runs%20on-64--bit%20%C2%B7%204%20GB%20RAM-1f8a5b?style=flat-square">
 </p>
 
@@ -67,9 +67,17 @@ If the screen stays black, restart and pick the *grafica di sicurezza* entry. If
 
 **Minimum:** 64-bit processor (2010 or newer), 4 GB RAM. Works on both UEFI and legacy BIOS.
 
-## What works today (0.3 preview)
+## What works today (0.4 preview)
 
-- Desktop with glass windows, taskbar, Start menu with search, quick settings for Wi‑Fi, volume and brightness
+- Real windows for every app, managed by labwc: move, resize, snap to half screen (Win+arrows or drag to the edge), Alt+Tab
+- Taskbar with every open window, programs included; Start menu (Windows key) with one search for apps, settings and files
+- Office suite: WordCraft, GridCraft and DeckCraft open and save Word, Excel and PowerPoint files
+- Web browser and video player
+- **Revv Drop**: send and receive files with nearby phones and PCs, no internet needed, LocalSend compatible
+- Shared folders: open the folders of other PCs and NAS drives, share your own with one click
+- File management: new folder, rename, copy, cut, paste, recycle bin with restore
+- Animated boot screen and themed boot menu
+- Compressed memory (zram) for PCs with little RAM
 - Real Wi‑Fi: scan, connect with password, on/off, open networks flagged as risky
 - Network check and repair, step by step
 - Real volume, brightness (laptops), shutdown and restart
@@ -90,8 +98,8 @@ Revv is built around six pillars. ✅ = in the current preview.
 | --- | --- |
 | Minimal base: no hidden services, no ads, no telemetry | ✅ 0.3 |
 | Boots straight to the desktop | ✅ 0.3 |
-| Compressed memory (zram): 4 GB machines behave like they have more | 0.4 |
-| Search index that updates only while the PC is idle | 0.4 |
+| Compressed memory (zram): 4 GB machines behave like they have more | ✅ 0.4 |
+| Search index that updates at low priority, in the background | ✅ 0.4 |
 | Updates installed at shutdown, never while you work | 0.5 |
 
 ### 2. Old and new hardware
@@ -110,12 +118,12 @@ Revv is built around six pillars. ✅ = in the current preview.
 | Wi‑Fi: scan, password, open networks flagged | ✅ 0.3 |
 | Wired network (LAN), automatic | ✅ 0.3 |
 | Check and repair the connection, step by step | ✅ 0.3 |
-| Open shared folders on other PCs (Windows too) and NAS drives | 0.4 |
-| Share a Revv folder on the network with one click | 0.4 |
-| Web browser | 0.4 |
+| Open shared folders on other PCs (Windows too) and NAS drives | ✅ 0.4 |
+| Share a Revv folder on the network with one click | ✅ 0.4 |
+| Web browser | ✅ 0.4 |
 
 ### 4. Revv Drop: send files between devices
-AirDrop-style transfer over the local network: right-click a file, choose **Send with Revv Drop**, pick a nearby device. No internet, no cables, encrypted. Revv Drop speaks the open [LocalSend](https://github.com/localsend/protocol) protocol, so it works with Windows, macOS, Android and iPhone through the free LocalSend app. Incoming files ask for confirmation and land in Downloads. **Version 0.4**
+AirDrop-style transfer over the local network: right-click a file, choose **Send with Revv Drop**, pick a nearby device. No internet, no cables, encrypted. Revv Drop speaks the open [LocalSend](https://github.com/localsend/protocol) protocol, so it works with Windows, macOS, Android and iPhone through the free LocalSend app. Incoming files ask for confirmation and land in Downloads. ✅ **Version 0.4**
 
 ### 5. Accessibility
 | Feature | Version |
@@ -132,9 +140,10 @@ AirDrop-style transfer over the local network: right-click a file, choose **Send
 | --- | --- |
 | File explorer, universal viewer, notes, calculator | ✅ 0.3 |
 | Volume, brightness, shutdown and restart | ✅ 0.3 |
-| Several programs at once, windows side by side, Alt+Tab | 0.4 |
-| Office suite ([WordCraft](https://github.com/storytold/wordcraft), [GridCraft](https://github.com/storytold/gridcraft), [DeckCraft](https://github.com/storytold/deckcraft)), video and music player | 0.4 |
-| Copy, move, recycle bin, USB sticks, ZIP, search inside documents | 0.4 |
+| Several programs at once, windows side by side, Alt+Tab | ✅ 0.4 |
+| Office suite ([WordCraft](https://github.com/storytold/wordcraft), [GridCraft](https://github.com/storytold/gridcraft), [DeckCraft](https://github.com/storytold/deckcraft)), video and music player | ✅ 0.4 |
+| Copy, move, recycle bin, USB sticks, file search | ✅ 0.4 |
+| ZIP archives, search inside documents | 0.5 |
 | Install to disk, also next to Windows | 0.5 |
 | Printers, scanners, Bluetooth, multiple monitors, battery saver, task manager | 0.5 |
 | Users, passwords, lock screen | 0.5 |
@@ -147,8 +156,9 @@ Revv is a small stack on top of a solid base:
 
 ```
 Revv desktop          HTML, CSS and JavaScript: windows, Start, settings, apps
-revv-shell            Python + GTK 4 + WebKitGTK: shows the desktop and talks to the system
-cage                  Wayland compositor, one full-screen session
+revv-shell            Python + GTK 4 + WebKitGTK: desktop, taskbar, Start, app windows, bridge to the system
+revv-drop             LocalSend-compatible file transfer (Python, HTTPS + UDP multicast)
+labwc                 Wayland window manager: windows, snapping, Alt+Tab, shortcuts
 greetd                logs in automatically and starts Revv
 Ubuntu 26.04 LTS      Linux kernel, drivers, firmware, NetworkManager, PipeWire
 ```
@@ -175,8 +185,11 @@ Open `desktop/index.html` in any browser. Network, files and hardware are simula
 
 ```
 desktop/        the Revv desktop (one HTML file)
-system/bin/     revv-shell (bridge) and revv-session (start-up)
-system/etc/     auto-login, network, language, keyboard
+system/bin/     revv-shell (desktop) and revv-session (start-up)
+system/lib/     revvsys (system functions), revvdrop (Revv Drop), revvwl (window list)
+system/etc/     labwc config, auto-login, network, zram, language, keyboard
+system/share/   window theme, boot splash (Plymouth), boot menu theme
+art/            logo and splash sources
 build/          build-iso.sh, package list, boot menu
 docs/           screenshots and documentation
 ```
