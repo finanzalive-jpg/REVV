@@ -1,12 +1,12 @@
 [terminal]
 vt = 1
 
-# All'accensione entra in automatico e avvia Revv
+# All'accensione entra in automatico e avvia Rise
 [initial_session]
-command = "/usr/local/bin/revv-session"
-user = "revv"
+command = "/usr/local/bin/rise-session"
+user = "rise"
 
-# Se Revv si chiude, compare un accesso testuale di emergenza
+# Se Rise si chiude, compare un accesso testuale di emergenza
 [default_session]
 command = "agreety --cmd /bin/bash"
 user = "_greetd"

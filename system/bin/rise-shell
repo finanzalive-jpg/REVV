@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Revv – il desktop.
+"""Rise – il desktop.
 
-Disegna il desktop di Revv con WebKitGTK e fa da ponte verso Linux.
+Disegna il desktop di Rise con WebKitGTK e fa da ponte verso Linux.
 Con un gestore di finestre moderno (labwc) crea:
   - lo sfondo con le icone          (livello "background")
   - la barra delle applicazioni     (livello "top", riserva 52 px in basso)
   - il menu Start e il pannello rapido (livello "overlay", nascosto finché serve)
-  - una finestra vera per ogni app di Revv (Impostazioni, Esplora file, …)
+  - una finestra vera per ogni app di Rise (Impostazioni, Esplora file, …)
 Senza gestore di finestre (vecchia sessione cage) apre tutto in un'unica finestra.
 
-Uso: revv-shell                 avvia il desktop
-     revv-shell --start         apre o chiude il menu Start (tasto Windows)
-     revv-shell --open <app>    apre un'app di Revv (es. files, settings)
+Uso: rise-shell                 avvia il desktop
+     rise-shell --start         apre o chiude il menu Start (tasto Windows)
+     rise-shell --open <app>    apre un'app di Rise (es. files, settings)
 """
 import json
 import os
@@ -25,12 +25,12 @@ import urllib.parse
 # La libreria che aggancia barra e sfondo ai bordi dello schermo deve essere caricata
 # prima di tutte le altre: se manca, il programma riparte da solo con LD_PRELOAD.
 LSLIB = '/usr/lib/x86_64-linux-gnu/libgtk4-layer-shell.so.0'
-if os.path.exists(LSLIB) and LSLIB not in os.environ.get('LD_PRELOAD', '') and os.environ.get('REVV_SINGLE') != '1':
+if os.path.exists(LSLIB) and LSLIB not in os.environ.get('LD_PRELOAD', '') and os.environ.get('RISE_SINGLE') != '1':
     os.environ['LD_PRELOAD'] = (LSLIB + ' ' + os.environ.get('LD_PRELOAD', '')).strip()
     os.execv(sys.executable, [sys.executable] + sys.argv)
 
-sys.path.insert(0, '/usr/local/lib/revv')
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib', 'revv'))
+sys.path.insert(0, '/usr/local/lib/rise')
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'lib', 'rise'))
 
 import gi  # noqa: E402
 gi.require_version('Gtk', '4.0')
@@ -44,12 +44,12 @@ try:
 except (ValueError, ImportError):
     LS = None
 
-import revvsys  # noqa: E402
+import risesys  # noqa: E402
 
-BASE = os.environ.get('REVV_DESKTOP', '/opt/revv/index.html')
+BASE = os.environ.get('RISE_DESKTOP', '/opt/rise/index.html')
 BAR_H = 52
 
-# Programmi veri che Revv sa avviare (se installati)
+# Programmi veri che Rise sa avviare (se installati)
 NATIVE = [
     {'id': 'browser', 'name': 'Internet', 'desc': 'Naviga sui siti web', 'icon': 'browser',
      'cmd': ['epiphany-browser'], 'app_ids': ['org.gnome.Epiphany', 'epiphany']},
@@ -76,9 +76,9 @@ def transparent(widget):
                                               Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
 
-class Revv(Gtk.Application):
+class Rise(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id='org.revv.Shell',
+        super().__init__(application_id='org.rise.Shell',
                          flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.views = {}          # nome -> WebView
         self.windows = {}        # nome -> Gtk.Window
@@ -106,7 +106,7 @@ class Revv(Gtk.Application):
     def boot(self):
         self.hold()
         transparent(None)
-        self.multi = LS is not None and LS.is_supported() and os.environ.get('REVV_SINGLE') != '1'
+        self.multi = LS is not None and LS.is_supported() and os.environ.get('RISE_SINGLE') != '1'
         if not self.multi:
             win = self.make_window('full', url_for(role='full'), Gtk.ApplicationWindow(application=self))
             win.set_decorated(False)
@@ -117,7 +117,7 @@ class Revv(Gtk.Application):
         d = Gtk.Window(application=self)
         LS.init_for_window(d)
         LS.set_layer(d, LS.Layer.BACKGROUND)
-        LS.set_namespace(d, 'revv-desktop')
+        LS.set_namespace(d, 'rise-desktop')
         for e in (LS.Edge.TOP, LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
             LS.set_anchor(d, e, True)
         LS.set_exclusive_zone(d, -1)
@@ -128,7 +128,7 @@ class Revv(Gtk.Application):
         p = Gtk.Window(application=self)
         LS.init_for_window(p)
         LS.set_layer(p, LS.Layer.TOP)
-        LS.set_namespace(p, 'revv-panel')
+        LS.set_namespace(p, 'rise-panel')
         for e in (LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
             LS.set_anchor(p, e, True)
         LS.set_exclusive_zone(p, BAR_H)
@@ -140,7 +140,7 @@ class Revv(Gtk.Application):
         o = Gtk.Window(application=self)
         LS.init_for_window(o)
         LS.set_layer(o, LS.Layer.OVERLAY)
-        LS.set_namespace(o, 'revv-popup')
+        LS.set_namespace(o, 'rise-popup')
         for e in (LS.Edge.TOP, LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
             LS.set_anchor(o, e, True)
         LS.set_exclusive_zone(o, -1)
@@ -148,24 +148,24 @@ class Revv(Gtk.Application):
         self.make_window('popup', url_for(role='popup'), o)
         # elenco delle finestre aperte
         try:
-            from revvwl.toplevels import Toplevels
+            from risewl.toplevels import Toplevels
             self.toplevels = Toplevels(lambda lst: GLib.idle_add(self.push_toplevels, lst))
             if not self.toplevels.start():
                 self.toplevels = None
-        except Exception as e:  # senza elenco finestre la barra mostra solo le app di Revv
+        except Exception as e:  # senza elenco finestre la barra mostra solo le app di Rise
             print('elenco finestre non disponibile:', e, file=sys.stderr)
             self.toplevels = None
-        # Revv Drop: ricezione file dai dispositivi vicini
+        # Rise Drop: ricezione file dai dispositivi vicini
         try:
-            import revvdrop
-            self.drop = revvdrop.Drop(
-                on_devices=lambda lst: GLib.idle_add(self.broadcast, 'window.__revvDropDevices && window.__revvDropDevices(%s)' % json.dumps(lst)),
+            import risedrop
+            self.drop = risedrop.Drop(
+                on_devices=lambda lst: GLib.idle_add(self.broadcast, 'window.__riseDropDevices && window.__riseDropDevices(%s)' % json.dumps(lst)),
                 on_request=lambda req: GLib.idle_add(self.popup_show, {'kind': 'drop', 'data': req}),
                 on_event=lambda ev: GLib.idle_add(self.drop_event, ev))
             if not self.drop.start():
                 self.drop = None
         except Exception as e:
-            print('Revv Drop non disponibile:', e, file=sys.stderr)
+            print('Rise Drop non disponibile:', e, file=sys.stderr)
             self.drop = None
         # indice per la ricerca dei file, aggiornato con calma dopo l'avvio
         GLib.timeout_add_seconds(90, self.index_later)
@@ -181,8 +181,8 @@ class Revv(Gtk.Application):
         if hasattr(s, 'set_enable_write_console_messages_to_stdout'):
             s.set_enable_write_console_messages_to_stdout(True)
         ucm = view.get_user_content_manager()
-        ucm.register_script_message_handler('revv', None)
-        ucm.connect('script-message-received::revv', self.on_message, name)
+        ucm.register_script_message_handler('rise', None)
+        ucm.connect('script-message-received::rise', self.on_message, name)
         view.connect('context-menu', lambda *a: True)
         view.load_uri(uri)
         win.set_child(view)
@@ -199,7 +199,7 @@ class Revv(Gtk.Application):
         cmd = msg.get('cmd', '')
         args = msg.get('args') or {}
         ui = UI_CMDS.get(cmd)
-        if os.environ.get('REVV_DEBUG'):
+        if os.environ.get('RISE_DEBUG'):
             print('cmd', name, cmd, json.dumps(args)[:200], file=sys.stderr, flush=True)
         if ui:  # comandi dell'interfaccia: subito, nel thread principale
             try:
@@ -211,7 +211,7 @@ class Revv(Gtk.Application):
         threading.Thread(target=self.run_cmd, args=(name, msg), daemon=True).start()
 
     def run_cmd(self, name, msg):
-        fn = revvsys.CMDS.get(msg.get('cmd'))
+        fn = risesys.CMDS.get(msg.get('cmd'))
         try:
             res = {'data': fn(msg.get('args') or {})} if fn else {'error': 'comando sconosciuto'}
         except Exception as e:
@@ -219,7 +219,7 @@ class Revv(Gtk.Application):
         GLib.idle_add(self.reply, name, msg.get('id', 0), res)
 
     def reply(self, name, mid, res):
-        self.js(name, 'window.__revvReply(%d, %s)' % (int(mid), json.dumps(res)))
+        self.js(name, 'window.__riseReply(%d, %s)' % (int(mid), json.dumps(res)))
         return False
 
     def js(self, name, code):
@@ -241,14 +241,14 @@ class Revv(Gtk.Application):
         out = []
         for t in lst:
             t = dict(t)
-            if t['app_id'] == 'org.revv.Shell':
-                t['revv'] = mine.get(t['title'])
+            if t['app_id'] == 'org.rise.Shell':
+                t['rise'] = mine.get(t['title'])
             else:
                 for a in NATIVE:
                     if t['app_id'] in a['app_ids'] or t['app_id'].lower().startswith(a['id']):
                         t['native'] = a['id']
             out.append(t)
-        self.js('panel', 'window.__revvToplevels && window.__revvToplevels(%s)' % json.dumps(out))
+        self.js('panel', 'window.__riseToplevels && window.__riseToplevels(%s)' % json.dumps(out))
         return False
 
     def app_open(self, a, _name=None):
@@ -258,7 +258,7 @@ class Revv(Gtk.Application):
             w = self.windows[key]
             w.present()
             if a.get('goto') is not None:
-                self.js(key, 'window.__revvGoto && window.__revvGoto(%s)' % json.dumps(a.get('goto')))
+                self.js(key, 'window.__riseGoto && window.__riseGoto(%s)' % json.dumps(a.get('goto')))
             return {'ok': True}
         if not self.multi:
             return {'ok': False}
@@ -330,8 +330,8 @@ class Revv(Gtk.Application):
             return {'ok': False}
         self.popup_kind = a.get('kind', 'start')
         o.present()
-        self.js('popup', 'window.__revvPopup && window.__revvPopup(%s, %s)' % (json.dumps(self.popup_kind), json.dumps(a.get('data'))))
-        self.js('panel', 'window.__revvPopupState && window.__revvPopupState(%s)' % json.dumps(self.popup_kind))
+        self.js('popup', 'window.__risePopup && window.__risePopup(%s, %s)' % (json.dumps(self.popup_kind), json.dumps(a.get('data'))))
+        self.js('panel', 'window.__risePopupState && window.__risePopupState(%s)' % json.dumps(self.popup_kind))
         return {'ok': True}
 
     def popup_hide(self, _a=None, _name=None):
@@ -339,7 +339,7 @@ class Revv(Gtk.Application):
         if o:
             o.set_visible(False)
         self.popup_kind = None
-        self.js('panel', 'window.__revvPopupState && window.__revvPopupState(null)')
+        self.js('panel', 'window.__risePopupState && window.__risePopupState(null)')
         return {'ok': True}
 
     # ---------------- programmi veri ----------------
@@ -370,19 +370,19 @@ class Revv(Gtk.Application):
         return {'ok': ok}
 
     def state_changed(self, a, name):
-        self.broadcast('window.__revvSync && window.__revvSync(%s)' % json.dumps(a.get('state') or {}), skip=name)
+        self.broadcast('window.__riseSync && window.__riseSync(%s)' % json.dumps(a.get('state') or {}), skip=name)
         return {'ok': True}
 
-    # ---------------- Revv Drop ----------------
+    # ---------------- Rise Drop ----------------
     def drop_event(self, ev):
         if ev.get('type') == 'received':
             self.popup_show({'kind': 'dropdone', 'data': ev})
-        self.broadcast('window.__revvDropEvent && window.__revvDropEvent(%s)' % json.dumps(ev))
+        self.broadcast('window.__riseDropEvent && window.__riseDropEvent(%s)' % json.dumps(ev))
         return False
 
     def drop_cmd(self, a, name):
         if not self.drop:
-            return {'ok': False, 'message': 'Revv Drop non è attivo.'}
+            return {'ok': False, 'message': 'Rise Drop non è attivo.'}
         act = a.get('action')
         if act == 'devices':
             return {'ok': True, 'devices': self.drop.list_devices(), 'conf': self.drop.conf}
@@ -395,14 +395,14 @@ class Revv(Gtk.Application):
         if act == 'send':
             def work():
                 res = self.drop.send(a.get('device'), a.get('paths') or [],
-                                     progress=lambda p: GLib.idle_add(self.js, name, 'window.__revvDropProgress && window.__revvDropProgress(%s)' % json.dumps(p)))
-                GLib.idle_add(self.js, name, 'window.__revvDropProgress && window.__revvDropProgress(%s)' % json.dumps(dict(res, stage='done')))
+                                     progress=lambda p: GLib.idle_add(self.js, name, 'window.__riseDropProgress && window.__riseDropProgress(%s)' % json.dumps(p)))
+                GLib.idle_add(self.js, name, 'window.__riseDropProgress && window.__riseDropProgress(%s)' % json.dumps(dict(res, stage='done')))
             threading.Thread(target=work, daemon=True).start()
             return {'ok': True}
         return {'ok': False}
 
     def index_later(self):
-        threading.Thread(target=lambda: revvsys.index_update({}), daemon=True).start()
+        threading.Thread(target=lambda: risesys.index_update({}), daemon=True).start()
         GLib.timeout_add_seconds(3600, self.index_later)
         return False
 
@@ -425,12 +425,12 @@ class Revv(Gtk.Application):
 
 
 UI_CMDS = {
-    'app.open': Revv.app_open, 'win.move': Revv.win_move, 'win.resize': Revv.win_resize,
-    'win.state': Revv.win_state, 'popup.show': Revv.popup_show, 'popup.hide': Revv.popup_hide,
-    'native.list': Revv.native_list, 'native.open': Revv.native_open, 'top.action': Revv.top_action,
-    'state.changed': Revv.state_changed, 'shell.info': Revv.info, 'drop': Revv.drop_cmd,
-    'open.with': Revv.open_with,
+    'app.open': Rise.app_open, 'win.move': Rise.win_move, 'win.resize': Rise.win_resize,
+    'win.state': Rise.win_state, 'popup.show': Rise.popup_show, 'popup.hide': Rise.popup_hide,
+    'native.list': Rise.native_list, 'native.open': Rise.native_open, 'top.action': Rise.top_action,
+    'state.changed': Rise.state_changed, 'shell.info': Rise.info, 'drop': Rise.drop_cmd,
+    'open.with': Rise.open_with,
 }
 
 if __name__ == '__main__':
-    sys.exit(Revv().run(sys.argv))
+    sys.exit(Rise().run(sys.argv))

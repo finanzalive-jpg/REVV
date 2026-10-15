@@ -37,11 +37,11 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then V="${GITHUB_REF#refs/tags/v}";
           elif [ -n "${{ github.event.inputs.version }}" ]; then V="${{ github.event.inputs.version }}";
-          else V="0.4-dev.$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}"; fi
+          else V="0.5-dev.$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}"; fi
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
       - name: Build ISO
-        run: sudo --preserve-env=GITHUB_TOKEN WORK=/mnt/revv-work ./build/build-iso.sh "${{ steps.v.outputs.version }}"
+        run: sudo --preserve-env=GITHUB_TOKEN WORK=/mnt/rise-work ./build/build-iso.sh "${{ steps.v.outputs.version }}"
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -51,7 +51,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" out/*.iso out/*.sha256 \
-            --title "Revv ${{ steps.v.outputs.version }}" \
+            --title "Rise ${{ steps.v.outputs.version }}" \
             --notes-file docs/release-notes.md
 
       - name: Publish preview build (main)
@@ -61,5 +61,5 @@ jobs:
         run: |
           gh release delete preview --yes --cleanup-tag || true
           gh release create preview out/*.iso out/*.sha256 --prerelease \
-            --title "Revv preview (${{ steps.v.outputs.version }})" \
+            --title "Rise preview (${{ steps.v.outputs.version }})" \
             --notes "Automatic build of the latest code on main. For testing: it may contain bugs."

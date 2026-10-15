@@ -1,7 +1,7 @@
-"""Revv Drop – invio e ricezione di file tra dispositivi vicini, senza internet.
+"""Rise Drop – invio e ricezione di file tra dispositivi vicini, senza internet.
 
 Parla il protocollo aperto LocalSend v2 (https://github.com/localsend/protocol), quindi
-funziona con l'app gratuita LocalSend su Windows, macOS, Android e iPhone e con gli altri PC Revv.
+funziona con l'app gratuita LocalSend su Windows, macOS, Android e iPhone e con gli altri PC Rise.
 
 - scoperta: messaggi UDP multicast 224.0.0.167:53317 + richiesta HTTPS /register
 - ricezione: server HTTPS sulla porta 53317, con certificato creato al primo avvio
@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PORT = 53317
 GROUP = '224.0.0.167'
 API = '/api/localsend/v2'
-CONF_DIR = os.path.expanduser('~/.config/revv/drop')
+CONF_DIR = os.path.expanduser('~/.config/rise/drop')
 DOWNLOADS = os.path.expanduser('~/Download')
 
 
@@ -68,7 +68,7 @@ class Drop:
             c = json.load(open(os.path.join(CONF_DIR, 'drop.json')))
         except Exception:
             c = {}
-        c.setdefault('alias', 'Revv di ' + os.uname().nodename)
+        c.setdefault('alias', 'Rise di ' + os.uname().nodename)
         c.setdefault('receive', True)
         return c
 
@@ -83,7 +83,7 @@ class Drop:
         return dict(self.conf)
 
     def info(self, announce=None):
-        d = {'alias': self.conf['alias'], 'version': '2.1', 'deviceModel': 'Revv', 'deviceType': 'desktop',
+        d = {'alias': self.conf['alias'], 'version': '2.1', 'deviceModel': 'Rise', 'deviceType': 'desktop',
              'fingerprint': self.fingerprint, 'port': PORT, 'protocol': 'https', 'download': False}
         if announce is not None:
             d['announce'] = announce
@@ -94,7 +94,7 @@ class Drop:
         crt, key = os.path.join(CONF_DIR, 'cert.pem'), os.path.join(CONF_DIR, 'key.pem')
         if not (os.path.exists(crt) and os.path.exists(key)):
             subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '3650',
-                            '-subj', '/CN=Revv Drop', '-keyout', key, '-out', crt],
+                            '-subj', '/CN=Rise Drop', '-keyout', key, '-out', crt],
                            capture_output=True, check=True)
             os.chmod(key, 0o600)
         der = ssl.PEM_cert_to_DER_cert(open(crt).read())
@@ -119,7 +119,7 @@ class Drop:
                                 struct.pack('4s4s', socket.inet_aton(GROUP), socket.inet_aton('0.0.0.0')))
             self.udp.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
         except Exception as e:
-            self.on_event({'type': 'error', 'message': 'Revv Drop non può partire: %s' % e})
+            self.on_event({'type': 'error', 'message': 'Rise Drop non può partire: %s' % e})
             return False
         self.running = True
         threading.Thread(target=self._listen, daemon=True).start()
@@ -243,7 +243,7 @@ class Drop:
         path = os.path.join(DOWNLOADS, name)
         h = hashlib.sha256()
         left = length
-        tmp = path + '.revvdrop'
+        tmp = path + '.risedrop'
         with open(tmp, 'wb') as f:
             while left > 0:
                 chunk = rfile.read(min(1 << 20, left))

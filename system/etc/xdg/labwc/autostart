@@ -1,2 +1,2 @@
-# Revv – programmi avviati insieme al gestore delle finestre
-revv-shell >/tmp/revv-shell.log 2>&1 &
+# Rise – programmi avviati insieme al gestore delle finestre
+rise-shell >/tmp/rise-shell.log 2>&1 &

@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- Revv – gestore delle finestre (labwc) -->
+<!-- Rise – gestore delle finestre (labwc) -->
 <labwc_config>
   <core>
     <decoration>server</decoration>
@@ -10,7 +10,7 @@
   <placement><policy>cascade</policy></placement>
 
   <theme>
-    <name>Revv</name>
+    <name>Rise</name>
     <cornerRadius>8</cornerRadius>
     <dropShadows>yes</dropShadows>
     <titlebar>
@@ -38,13 +38,13 @@
     <repeatRate>25</repeatRate>
     <repeatDelay>600</repeatDelay>
     <!-- Tasto Windows: menu Start -->
-    <keybind key="Super_L" onRelease="yes"><action name="Execute" command="revv-shell --start"/></keybind>
-    <keybind key="Super_R" onRelease="yes"><action name="Execute" command="revv-shell --start"/></keybind>
+    <keybind key="Super_L" onRelease="yes"><action name="Execute" command="rise-shell --start"/></keybind>
+    <keybind key="Super_R" onRelease="yes"><action name="Execute" command="rise-shell --start"/></keybind>
     <keybind key="A-Tab"><action name="NextWindow"/></keybind>
     <keybind key="A-S-Tab"><action name="PreviousWindow"/></keybind>
     <keybind key="A-F4"><action name="Close"/></keybind>
-    <keybind key="W-e"><action name="Execute" command="revv-shell --open files"/></keybind>
-    <keybind key="W-i"><action name="Execute" command="revv-shell --open settings"/></keybind>
+    <keybind key="W-e"><action name="Execute" command="rise-shell --open files"/></keybind>
+    <keybind key="W-i"><action name="Execute" command="rise-shell --open settings"/></keybind>
     <keybind key="W-Left"><action name="SnapToEdge" direction="left"/></keybind>
     <keybind key="W-Right"><action name="SnapToEdge" direction="right"/></keybind>
     <keybind key="W-Up"><action name="Maximize"/></keybind>
@@ -59,7 +59,7 @@
 
   <mouse>
     <default/>
-    <!-- Niente menu "di sistema" sul desktop: il desktop è di Revv -->
+    <!-- Niente menu "di sistema" sul desktop: il desktop è di Rise -->
     <context name="Root">
       <mousebind button="Left" action="Press"/>
       <mousebind button="Right" action="Press"/>

@@ -1,4 +1,4 @@
-"""Revv – funzioni di sistema richiamate dal desktop (rete, audio, file, hardware…).
+"""Rise – funzioni di sistema richiamate dal desktop (rete, audio, file, hardware…).
 Ogni funzione riceve un dizionario di argomenti e restituisce dati serializzabili in JSON."""
 import base64, json, os, pwd, re, subprocess, threading, time
 
@@ -585,7 +585,7 @@ def net_mount(a):
     return {'ok': False, 'message': 'Non riesco ad aprire la cartella condivisa.'}
 
 
-SHARES_CONF = '/etc/samba/revv-shares.conf'
+SHARES_CONF = '/etc/samba/rise-shares.conf'
 
 
 def _shares_read():
@@ -609,7 +609,7 @@ def _shares_read():
 
 
 def _shares_write(lst):
-    txt = '# Cartelle condivise da Revv (generato automaticamente)\n'
+    txt = '# Cartelle condivise da Rise (generato automaticamente)\n'
     for s in lst:
         txt += (f"\n[{s['name']}]\n   path = {s['path']}\n   read only = {'no' if s['writable'] else 'yes'}\n"
                 f"   guest ok = yes\n   browseable = yes\n   force user = {USER}\n")

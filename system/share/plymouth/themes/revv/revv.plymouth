@@ -1,8 +1,0 @@
-[Plymouth Theme]
-Name=Revv
-Description=Revv – your PC, revved up
-ModuleName=script
-
-[script]
-ImageDir=/usr/share/plymouth/themes/revv
-ScriptFile=/usr/share/plymouth/themes/revv/revv.script

@@ -1,12 +1,12 @@
 # Credits and third-party licenses
 
-Revv itself is released under the GNU General Public License v3.0 (see `LICENSE`).
+Rise itself is released under the GNU General Public License v3.0 (see `LICENSE`).
 It includes or downloads the following work. Thank you to all their authors.
 
-| Component | Use in Revv | License |
+| Component | Use in Rise | License |
 | --- | --- | --- |
 | [Ubuntu](https://ubuntu.com) 26.04 LTS | Base system: kernel, drivers, firmware, tools | Various free licenses (GPL, LGPL, MIT, …); see `/usr/share/doc/*/copyright` on the system |
-| [Oxygen icons](https://invent.kde.org/frameworks/oxygen-icons) by Nuno Pinheiro, David Vignoni, David Miller, Johann Ollivier Lapeyre, Kenneth Wimer, Riccardo Iaconelli and others | Icons. Folders recolored and a PDF icon redrawn for Revv | LGPL-3.0 |
+| [Win11 icon theme](https://github.com/yeyushengfan258/Win11-icon-theme) by yeyushengfan258 (based on Yaru and others) | Icons for apps, folders and file types | GPL-3.0 |
 | [labwc](https://github.com/labwc/labwc) | Window manager | GPL-2.0 |
 | [cage](https://github.com/cage-kiosk/cage) | Fallback full-screen session | MIT |
 | [gtk4-layer-shell](https://github.com/wmww/gtk4-layer-shell) | Desktop and taskbar layers | MIT |
@@ -25,6 +25,6 @@ It includes or downloads the following work. Thank you to all their authors.
 
 Office suite, downloaded at build time from the official releases: [WordCraft](https://github.com/storytold/wordcraft), [GridCraft](https://github.com/storytold/gridcraft) and [DeckCraft](https://github.com/storytold/deckcraft) by Brandon Thomas and the ArtCraft team (MIT OR Apache-2.0).
 
-Revv Drop implements the open [LocalSend protocol](https://github.com/localsend/protocol) (LocalSend is Apache-2.0); no LocalSend code is included.
+Rise Drop implements the open [LocalSend protocol](https://github.com/localsend/protocol) (LocalSend is Apache-2.0); no LocalSend code is included.
 
-Windows is a trademark of Microsoft Corporation. Revv is an independent project and is not affiliated with or endorsed by Microsoft.
+Windows is a trademark of Microsoft Corporation. Rise is an independent project and is not affiliated with or endorsed by Microsoft.

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="fr" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2456e0"/>
+      <stop offset=".75" stop-color="#3f86ff"/>
+      <stop offset="1" stop-color="#cfe8ff"/>
+    </linearGradient>
+    <linearGradient id="in" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#061a5c" stop-opacity=".55"/>
+      <stop offset=".8" stop-color="#1240b8" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#8fc2ff" stop-opacity=".9"/>
+    </linearGradient>
+    <linearGradient id="fl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5d9bff"/>
+      <stop offset="1" stop-color="#123a9e" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#cfe6ff" stop-opacity=".95"/>
+      <stop offset=".4" stop-color="#5e9cff" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#2a6bff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="b" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+  <!-- pavimento di luce -->
+  <path d="M4 172 L138 136 L198 172 Z" fill="url(#fl)" opacity=".95"/>
+  <!-- interno del portale (luce che filtra) -->
+  <path d="M50 72 L136 52 L136 138 L50 150 Z" fill="url(#in)"/>
+  <!-- cornice sottile in prospettiva -->
+  <path fill-rule="evenodd" fill="url(#fr)"
+    d="M36 66 Q36 58 44 56 L144 32 Q154 30 154 40 L154 142 L136 140 L136 52 L50 72 L50 150 L36 152 Z"/>
+  <!-- bagliore dove la luce esce -->
+  <ellipse cx="138" cy="134" rx="26" ry="16" fill="url(#glow)"/>
+  <path d="M146 40 L152 39 L152 141 L146 140 Z" fill="#fff" opacity=".95"/>
+  <path d="M138 56 L140 56 L140 136 L138 137 Z" fill="#fff" opacity=".9" filter="url(#b)"/>
+  <!-- filo di luce del pavimento -->
+  <path d="M36 152 L136 138" fill="none" stroke="#d9ecff" stroke-width="2.5" stroke-linejoin="round" opacity=".85"/>
+</svg>

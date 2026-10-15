@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Rise
+Description=Rise – bring your PC back to life
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/rise
+ScriptFile=/usr/share/plymouth/themes/rise/rise.script

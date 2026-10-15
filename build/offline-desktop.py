@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepara il desktop di Revv per funzionare senza internet:
+"""Prepara il desktop di Rise per funzionare senza internet:
 caratteri e lettori di file (PDF, Word, Excel) copiati in locale.
 Uso: offline-desktop.py <index.html> <cartella npm estratta> <destinazione>"""
 import pathlib, re, shutil, sys

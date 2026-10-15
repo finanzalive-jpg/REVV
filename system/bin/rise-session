@@ -1,7 +1,7 @@
 #!/bin/sh
-# Revv – avvia la sessione grafica.
-# labwc gestisce le finestre e avvia revv-shell (vedi /etc/xdg/labwc/autostart).
-exec >/tmp/revv-session.log 2>&1
+# Rise – avvia la sessione grafica.
+# labwc gestisce le finestre e avvia rise-shell (vedi /etc/xdg/labwc/autostart).
+exec >/tmp/rise-session.log 2>&1
 export XDG_SESSION_TYPE=wayland
 export GDK_BACKEND=wayland
 # Se manca una scheda video con accelerazione (es. macchine virtuali), disegna via software.
@@ -14,5 +14,5 @@ if command -v labwc >/dev/null 2>&1; then
   exec labwc
 fi
 # Ripiego: una sola finestra a tutto schermo
-export REVV_SINGLE=1
-exec cage -s -- /usr/local/bin/revv-shell
+export RISE_SINGLE=1
+exec cage -s -- /usr/local/bin/rise-shell

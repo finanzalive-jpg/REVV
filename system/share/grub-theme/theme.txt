@@ -1,12 +1,12 @@
-# Revv – menu della chiavetta
+# Rise – menu della chiavetta
 title-text: ""
 desktop-image: "bg.png"
-desktop-color: "#0a2236"
+desktop-color: "#03060f"
 message-color: "#cfe8f5"
 
 + image {
-  left = 50%-100
-  top = 14%
+  left = 50%-150
+  top = 9%
   file = "logo.png"
 }
 
@@ -16,7 +16,7 @@ message-color: "#cfe8f5"
   top = 46%
   height = 40%
   item_font = "Unifont Regular 16"
-  item_color = "#cfe8f5"
+  item_color = "#c9d8f2"
   selected_item_color = "#ffffff"
   item_height = 40
   item_padding = 14
@@ -31,7 +31,7 @@ message-color: "#cfe8f5"
   left = 0
   width = 100%
   align = "center"
-  color = "#9fc0d6"
+  color = "#8fa9d8"
   font = "Unifont Regular 16"
   id = "__timeout__"
   text = "Avvio automatico: %d s  ·  frecce e Invio per scegliere"

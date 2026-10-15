@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Revv – costruisce la ISO live (Ubuntu 26.04 LTS + desktop Revv) da zero.
+# Rise – costruisce la ISO live (Ubuntu 26.04 LTS + desktop Rise) da zero.
 # Uso (come root, su Ubuntu 24.04 o più recente):  sudo ./build/build-iso.sh [versione]
-# Risultato: out/revv-<versione>-live-amd64.iso
+# Risultato: out/rise-<versione>-live-amd64.iso
 set -euo pipefail
 
 VERSION="${1:-0.3}"
@@ -12,7 +12,7 @@ WORK="${WORK:-$ROOT/work}"
 OUT="$ROOT/out"
 CH="$WORK/chroot"
 ISO="$WORK/iso"
-NAME="revv-${VERSION}-live-amd64"
+NAME="rise-${VERSION}-live-amd64"
 
 [ "$(id -u)" -eq 0 ] || { echo "Lancia lo script come root (sudo)."; exit 1; }
 log(){ printf '\n==> %s\n' "$*"; }
@@ -42,7 +42,7 @@ for m in proc sys dev dev/pts; do mount --bind "/$m" "$CH/$m"; done
 cp -L /etc/resolv.conf "$CH/etc/resolv.conf"
 printf '#!/bin/sh\nexit 101\n' > "$CH/usr/sbin/policy-rc.d"; chmod +x "$CH/usr/sbin/policy-rc.d"
 
-log "3/9 Kernel, driver, firmware e componenti di Revv"
+log "3/9 Kernel, driver, firmware e componenti di Rise"
 chroot "$CH" apt-get update -qq
 # shellcheck disable=SC2046
 chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat "$ROOT/build/packages.txt")
@@ -60,8 +60,8 @@ for app in wordcraft gridcraft deckcraft; do
 done
 rm -rf "$CH/tmp/craft"
 
-log "4/9 Desktop di Revv (offline: caratteri e lettori di file inclusi)"
-D="$CH/opt/revv"; mkdir -p "$D/fonts" "$D/lib"
+log "4/9 Desktop di Rise (offline: caratteri e lettori di file inclusi)"
+D="$CH/opt/rise"; mkdir -p "$D/fonts" "$D/lib"
 NPM="$WORK/npm"; mkdir -p "$NPM"
 # NPM_CACHE: cartella con i pacchetti già scaricati (facoltativa, accelera le prove locali)
 [ -n "${NPM_CACHE:-}" ] && [ -d "$NPM_CACHE" ] && cp "$NPM_CACHE"/*.tgz "$NPM/" 2>/dev/null || true
@@ -71,7 +71,7 @@ NPM="$WORK/npm"; mkdir -p "$NPM"
 
 log "5/9 Configurazione di sistema"
 for d in Documenti Immagini Musica Download Video; do mkdir -p "$CH/etc/skel/$d"; done
-echo revv > "$CH/etc/hostname"; printf '127.0.0.1 localhost\n127.0.1.1 revv\n' > "$CH/etc/hosts"
+echo rise > "$CH/etc/hostname"; printf '127.0.0.1 localhost\n127.0.1.1 rise\n' > "$CH/etc/hosts"
 grep -q XKB_DEFAULT_LAYOUT "$CH/etc/environment" || echo 'XKB_DEFAULT_LAYOUT=it' >> "$CH/etc/environment"
 chroot "$CH" sh -c '
   sed -i "s/^# *it_IT.UTF-8/it_IT.UTF-8/" /etc/locale.gen; locale-gen >/dev/null
@@ -79,28 +79,28 @@ chroot "$CH" sh -c '
   systemctl enable greetd NetworkManager >/dev/null 2>&1
   systemctl disable getty@tty1.service >/dev/null 2>&1 || true
   systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1 || true
-  systemctl enable smbd nmbd revv-wsdd avahi-daemon >/dev/null 2>&1 || true
+  systemctl enable smbd nmbd rise-wsdd avahi-daemon >/dev/null 2>&1 || true
   systemctl set-default graphical.target >/dev/null 2>&1'
-# condivisione cartelle (Samba): le cartelle scelte in Esplora file finiscono in revv-shares.conf
-if [ -f "$CH/etc/samba/smb.conf" ] && ! grep -q revv-shares "$CH/etc/samba/smb.conf"; then
-  sed -i '/^\[global\]/a\   include = /etc/samba/revv-shares.conf' "$CH/etc/samba/smb.conf"
+# condivisione cartelle (Samba): le cartelle scelte in Esplora file finiscono in rise-shares.conf
+if [ -f "$CH/etc/samba/smb.conf" ] && ! grep -q rise-shares "$CH/etc/samba/smb.conf"; then
+  sed -i '/^\[global\]/a\   include = /etc/samba/rise-shares.conf' "$CH/etc/samba/smb.conf"
   grep -q '^ *map to guest' "$CH/etc/samba/smb.conf" || sed -i '/^\[global\]/a\   map to guest = bad user' "$CH/etc/samba/smb.conf"
   sed -i "s/^\( *\)workgroup = .*/\1workgroup = WORKGROUP/" "$CH/etc/samba/smb.conf"
 fi
-touch "$CH/etc/samba/revv-shares.conf"
-cat > "$CH/etc/os-release.revv" <<EOF
-PRETTY_NAME="Revv $VERSION"
-NAME="Revv"
+touch "$CH/etc/samba/rise-shares.conf"
+cat > "$CH/etc/os-release.rise" <<EOF
+PRETTY_NAME="Rise $VERSION"
+NAME="Rise"
 VERSION="$VERSION"
-ID=revv
+ID=rise
 ID_LIKE=ubuntu
-HOME_URL="https://github.com/finanzalive-jpg/revv"
+HOME_URL="https://github.com/finanzalive-jpg/REVV"
 EOF
 
 log "6/9 Schermata di avvio e avvio live (initramfs)"
-if [ -f "$CH/usr/share/plymouth/themes/revv/revv.plymouth" ]; then
-  chroot "$CH" update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth /usr/share/plymouth/themes/revv/revv.plymouth 200
-  chroot "$CH" update-alternatives --set default.plymouth /usr/share/plymouth/themes/revv/revv.plymouth
+if [ -f "$CH/usr/share/plymouth/themes/rise/rise.plymouth" ]; then
+  chroot "$CH" update-alternatives --install /usr/share/plymouth/themes/default.plymouth default.plymouth /usr/share/plymouth/themes/rise/rise.plymouth 200
+  chroot "$CH" update-alternatives --set default.plymouth /usr/share/plymouth/themes/rise/rise.plymouth
 fi
 chroot "$CH" update-initramfs -c -k all
 KVER="$(ls "$CH/lib/modules" | sort -V | tail -1)"
@@ -123,13 +123,13 @@ chroot "$CH" dpkg-query -W --showformat='${Package} ${Version}\n' > "$ISO/casper
 mksquashfs "$CH" "$ISO/casper/filesystem.squashfs" -comp zstd -Xcompression-level 15 -b 1M -noappend -no-progress \
   -wildcards -e 'proc/*' 'sys/*' 'dev/*' 'run/*' 'tmp/*' 'boot/*'
 printf '%s' "$(du -sx --block-size=1 "$CH" | cut -f1)" > "$ISO/casper/filesystem.size"
-echo "Revv $VERSION - live amd64 $(date +%Y%m%d)" > "$ISO/.disk/info"
+echo "Rise $VERSION - live amd64 $(date +%Y%m%d)" > "$ISO/.disk/info"
 cp "$ROOT/build/grub.cfg" "$ISO/boot/grub/grub.cfg"
-mkdir -p "$ISO/boot/grub/themes/revv" && cp "$ROOT/system/share/grub-theme/"* "$ISO/boot/grub/themes/revv/"
+mkdir -p "$ISO/boot/grub/themes/rise" && cp "$ROOT/system/share/grub-theme/"* "$ISO/boot/grub/themes/rise/"
 ( cd "$ISO" && find . -type f ! -name md5sum.txt -print0 | xargs -0 md5sum > md5sum.txt )
 
 log "9/9 ISO avviabile (BIOS + UEFI)"
-grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -volid "REVV_${VERSION//./}"
+grub-mkrescue -o "$OUT/$NAME.iso" "$ISO" -- -volid "RISE_${VERSION//./}"
 ( cd "$OUT" && sha256sum "$NAME.iso" > "$NAME.iso.sha256" )
 ls -lh "$OUT"
 echo "Fatto: $OUT/$NAME.iso"

@@ -1,5 +1,5 @@
 [Unit]
-Description=Revv: visibile nella "Rete" dei PC Windows (wsdd)
+Description=Rise: visibile nella "Rete" dei PC Windows (wsdd)
 After=network-online.target smbd.service
 Wants=network-online.target
 
