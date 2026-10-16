@@ -11,6 +11,14 @@ if systemd-detect-virt -q; then
   export WEBKIT_DISABLE_DMABUF_RENDERER=1
 fi
 
+# Stabilità su schede video vecchie e su quelle con driver fragili:
+# - le pagine web si disegnano senza memoria video condivisa (evita blocchi della grafica);
+# - i video (YouTube…) li decodifica il processore: l'accelerazione hardware dei chip Intel
+#   fino al 2014 circa blocca lo schermo mentre l'audio continua.
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export GST_PLUGIN_FEATURE_RANK="vaapidecodebin:NONE,vaapih264dec:NONE,vaapivp9dec:NONE,vaapivp8dec:NONE,vaapiav1dec:NONE,vah264dec:NONE,vah265dec:NONE,vavp8dec:NONE,vavp9dec:NONE,vaav1dec:NONE,nvh264dec:NONE,nvh265dec:NONE"
+export LIBVA_DRIVER_NAME=none
+
 fails=0
 while :; do
   # tiene il registro della sessione precedente per capire cosa è andato storto
