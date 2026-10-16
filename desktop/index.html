@@ -361,6 +361,11 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .ai-dots{display:inline-flex;gap:4px;vertical-align:middle}.ai-dots i{width:7px;height:7px;border-radius:50%;background:var(--accent);opacity:.3;animation:aidot 1.2s infinite ease-in-out}.ai-dots i:nth-child(2){animation-delay:.2s}.ai-dots i:nth-child(3){animation-delay:.4s}
 @keyframes aidot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
 .ai-phase{color:var(--ink-soft);display:inline-flex;align-items:center;gap:6px}.ai-live{margin-top:6px;padding:8px 10px;background:#f6f9fc;border:1px dashed var(--line);border-radius:6px;font-size:.92em;max-height:260px;overflow:auto}
+.ai-mic{display:inline-grid;place-items:center;min-width:42px}.ai-mic.rec{background:#d83a3a;color:#fff;border-color:#b52626;animation:airec 1.2s infinite}
+@keyframes airec{50%{box-shadow:0 0 0 6px rgba(216,58,58,.25)}}
+.ai-voice{font:inherit;font-size:.9em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
+.ai-thinkbox{margin:-2px 0 8px;font-size:.86em;color:var(--ink-soft)}.ai-thinkbox summary{cursor:pointer}.ai-thinkbox div{white-space:pre-wrap;max-height:220px;overflow:auto;margin-top:6px;padding:8px;background:#f6f9fc;border-radius:6px}
+.ai-thinklive{white-space:pre-wrap;color:var(--ink-soft);font-size:.86em;max-height:140px}
 .ai-hint{margin:auto;max-width:460px;display:grid;gap:8px;text-align:center}
 .ai-chip{border:1px solid var(--line);background:#fff;border-radius:16px;padding:8px 12px;cursor:pointer;font:inherit;text-align:left}
 .ai-chip:hover{border-color:var(--accent)}
@@ -1323,10 +1328,12 @@ function renderSettings(b,opts){
 }
 
 /* ================= Assistente (IA sul computer) ================= */
-const AI_SYS=`Sei l'Assistente di Rise. Rispondi in italiano, chiaro e breve.
+const AI_SYS_TXT=`Sei l'Assistente di Rise, il sistema operativo di questo computer. Rispondi in italiano, in modo chiaro e preciso. Ragiona con calma prima di rispondere.
+Hai accesso a internet: per notizie, prezzi, orari, meteo, persone, prodotti o qualsiasi cosa che può essere cambiata di recente usa cerca_web e poi leggi_pagina sulle fonti migliori; alla fine indica i siti usati.
 Per un preventivo usa SEMPRE crea_preventivo: passa azienda, cliente, oggetto e le voci con quantità e prezzo unitario; i totali e l'IVA li calcola Rise. Non inventare nomi, indirizzi o prezzi: se mancano il cliente o i prezzi chiedili prima, in una sola domanda.
 Per lettere e altri documenti usa crea_documento_word con un testo completo e curato, senza segnaposto tra parentesi quadre (titoli con #, elenchi con -, tabelle con |).
-Per aprire programmi usa apri_programma.`;
+Per aprire programmi usa apri_programma. Per trovare file del computer usa cerca_file.`;
+const AI_SYS=()=>AI_SYS_TXT+'\nOggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', ore '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';
 const AI_TOOLS=[
  {type:'function',function:{name:'apri_programma',description:'Apre un programma del computer',parameters:{type:'object',properties:{nome:{type:'string',enum:['internet','word','excel','presentazioni','file','impostazioni','calcolatrice','note','video']}},required:['nome']}}},
  {type:'function',function:{name:'crea_documento_word',description:'Crea un documento Word (.docx) nella cartella Documenti e lo apre',parameters:{type:'object',properties:{titolo:{type:'string',description:'Nome del documento'},testo:{type:'string',description:'Testo completo del documento. Titoli con # e elenchi con -'}},required:['titolo','testo']}}},
@@ -1334,6 +1341,8 @@ const AI_TOOLS=[
    azienda:{type:'string',description:'Chi fa il preventivo: nome, indirizzo, partita IVA (vuoto = quella usata l’ultima volta)'},cliente:{type:'string',description:'Nome e indirizzo del cliente'},oggetto:{type:'string',description:'Di cosa si tratta, in breve'},
    voci:{type:'array',items:{type:'object',properties:{descrizione:{type:'string'},quantita:{type:'number'},prezzo:{type:'number',description:'Prezzo unitario in euro, senza IVA'}},required:['descrizione','prezzo']}},
    iva:{type:'number',description:'Percentuale IVA, di solito 22'},note:{type:'string'},pagamento:{type:'string'},validita:{type:'string'}},required:['cliente','voci']}}},
+ {type:'function',function:{name:'cerca_web',description:'Cerca su internet e restituisce i primi risultati (titolo, indirizzo, riassunto)',parameters:{type:'object',properties:{testo:{type:'string',description:'Cosa cercare'}},required:['testo']}}},
+ {type:'function',function:{name:'leggi_pagina',description:'Scarica una pagina web e ne restituisce il testo',parameters:{type:'object',properties:{url:{type:'string'}},required:['url']}}},
  {type:'function',function:{name:'cerca_file',description:'Cerca file nel computer per nome',parameters:{type:'object',properties:{testo:{type:'string'}},required:['testo']}}}];
 function mdLite(t){return esc(t).replace(/^### (.*)$/gm,'<b>$1</b>').replace(/^## (.*)$/gm,'<b>$1</b>').replace(/^# (.*)$/gm,'<b class="ai-h">$1</b>')
   .replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/^[-*] (.*)$/gm,'• $1').replace(/\n/g,'<br>')}
@@ -1357,7 +1366,7 @@ function renderAssistant(b){
         <small>Scarica circa ${String(m.gb).replace('.',',')} GB · adatto a PC con ${m.ram} GB di memoria o più${m.error?` · <span class="err">${esc(m.error)}</span>`:''}</small>
         ${m.downloading?`<div class="meter"><i style="width:${pct}%"></i></div><small>${m.total?fmt(m.done)+' di '+fmt(m.total)+' · '+pct+'%':'Mi collego…'}</small>`:''}</div>
         <div>${m.have?`<button class="btn primary" data-use="${m.id}">Usa</button> <button class="btn" data-del="${m.id}">Elimina</button>`:m.downloading?`<button class="btn" data-cancel="${m.id}">Annulla</button>`:`<button class="btn${rec?' primary':''}" data-dl="${m.id}">Scarica</button>`}</div></div>`}).join('');
-    body.innerHTML=`<div class="ai-setup"><div class="ai-hero">${I('assistant',56)}<div><h2>Assistente</h2><p class="lead">Fai domande, scrivi lettere e preventivi, apri programmi. Funziona sul tuo computer: senza internet e senza mandare i tuoi dati a nessuno.</p></div></div>
+    body.innerHTML=`<div class="ai-setup"><div class="ai-hero">${I('assistant',56)}<div><h2>Assistente</h2><p class="lead">Fai domande, scrivi lettere e preventivi, cerca su internet, apri programmi, parlagli a voce. Il cervello gira sul tuo computer: i tuoi dati non vanno a nessuno.</p></div></div>
       <p class="ai-step">Per cominciare scarica il “cervello” dell'Assistente (si fa una volta sola). Più è grande, più è bravo, ma serve più memoria. Questo computer ha ${String(ST.ramGb).replace('.',',')} GB.</p>
       <div class="ai-models">${rows}</div>
       ${ST.live?'<p class="note">Stai usando Rise dalla chiavetta: il modello scaricato resta finché non spegni il computer.</p>':''}
@@ -1375,17 +1384,48 @@ function renderAssistant(b){
     await refresh();chat()}
   function chat(){stopPoll();
     const m=ST.models.find(x=>x.id===ST.model);
-    body.innerHTML=`<div class="ai-chat"><div class="ai-top"><span>${I('assistant',22)} <b>Assistente</b> <small>${esc(m?m.name:'')} · sul tuo computer</small></span><span><button class="btn" data-new>Nuova chat</button> <button class="btn" data-models>Modelli</button></span></div>
+    body.innerHTML=`<div class="ai-chat"><div class="ai-top"><span>${I('assistant',22)} <b>Assistente</b> <small>${esc(m?m.name:'')} · sul tuo computer</small></span><span><select class="ai-voice" data-voice aria-label="Risposte a voce"><option value="">🔇 Voce spenta</option><option value="f">🔊 Voce femminile</option><option value="m">🔊 Voce maschile</option></select> <button class="btn" data-new>Nuova chat</button> <button class="btn" data-models>Modelli</button></span></div>
       <div class="ai-log" aria-live="polite"></div>
-      <div class="ai-in"><textarea rows="2" placeholder="Scrivi qui… per esempio: “Scrivimi un preventivo per 3 condizionatori”" aria-label="Messaggio"></textarea><button class="btn primary" data-send>Invia</button></div></div>`;
+      <div class="ai-in"><textarea rows="2" placeholder="Scrivi qui… per esempio: “Scrivimi un preventivo per 3 condizionatori”" aria-label="Messaggio"></textarea><button class="btn ai-mic" data-mic title="Parla con l'Assistente"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 15a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 1 0-7 0v6A3.5 3.5 0 0 0 12 15zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.9V20H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2H13v-2.6a6 6 0 0 0 5-5.9z"/></svg></button><button class="btn primary" data-send>Invia</button></div></div>`;
     const log=$('.ai-log',body),ta=$('textarea',body),send=$('[data-send]',body);
     $('[data-new]',body).onclick=()=>{if(ctrl)ctrl.abort();msgs=[];log.innerHTML='';hello();ta.focus()};
     $('[data-models]',body).onclick=async()=>{if(ctrl)ctrl.abort();await refresh();setup()};
-    const hello=()=>{if(!msgs.length)log.innerHTML=`<div class="ai-hint"><b>Cosa posso fare?</b>${['Scrivimi un preventivo per l’installazione di 3 condizionatori','Apri il browser','Scrivi una lettera di disdetta della palestra','Come faccio a condividere una cartella con un altro PC?'].map(t=>`<button class="ai-chip">${t}</button>`).join('')}</div>`;
+    const hello=()=>{if(!msgs.length)log.innerHTML=`<div class="ai-hint"><b>Cosa posso fare?</b>${['Scrivimi un preventivo per l’installazione di 3 condizionatori','Che tempo farà domani a Milano?','Scrivi una lettera di disdetta della palestra','Come faccio a condividere una cartella con un altro PC?'].map(t=>`<button class="ai-chip">${t}</button>`).join('')}</div>`;
       $$('.ai-chip',log).forEach(c=>c.onclick=()=>{ta.value=c.textContent;go()})};
     hello();
     const add=(role,html)=>{const h=$('.ai-hint',log);if(h)h.remove();const d=document.createElement('div');d.className='ai-msg '+role;d.innerHTML=html;log.appendChild(d);log.scrollTop=log.scrollHeight;return d};
     ta.onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();go()}};
+    // ---- ragionamento: si può riaprire per vedere come ci è arrivato
+    function thinkBox(out,think,t0){think=(think||'').trim();if(!think)return;const d=document.createElement('details');d.className='ai-thinkbox';
+      d.innerHTML=`<summary>Ha ragionato per ${Math.max(1,Math.round((performance.now()-t0)/1000))} s</summary><div></div>`;d.lastChild.textContent=think;out.prepend(d)}
+    // ---- voce: risposte lette ad alta voce (Piper) e domande dette al microfono (whisper.cpp)
+    const vsel=$('[data-voice]',body),mic=$('[data-mic]',body);let VOICE='f';try{const v=localStorage.getItem('rise.ai.voice');if(v!==null)VOICE=v}catch(e){}
+    vsel.value=VOICE;
+    async function voiceReady(v){let st;try{st=await SYS.call('voice.status')}catch(e){return false}
+      const need=!st.sttReady||(v&&st.voices[v]&&!st.voices[v].ready);if(!need)return st;
+      if(!st.listen&&!st.speak){toast('La voce non è installata su questo computer.',true);return false}
+      const mb=(st.sttReady?0:st.sttMb)+(v&&st.voices[v]&&!st.voices[v].ready?st.voices[v].mb:0);
+      const note=add('tool',`${DOTS0} Scarico la voce dell'Assistente (circa ${mb} MB, una volta sola)… <b class="ai-pct"></b>`);
+      await SYS.call('voice.setup',{voice:v||'f'});
+      for(;;){await new Promise(r=>setTimeout(r,700));if(!b.isConnected)return false;try{st=await SYS.call('voice.status')}catch(e){return false}
+        const d=st.download||{};const p=$('.ai-pct',note);if(p&&d.total)p.textContent=Math.round(d.done/d.total*100)+'%';
+        if(!d.running)break}
+      note.remove();if(st.download&&st.download.error){toast(st.download.error,true);return false}return st}
+    const DOTS0='<span class="ai-dots"><i></i><i></i><i></i></span>';
+    vsel.onchange=async()=>{VOICE=vsel.value;try{localStorage.setItem('rise.ai.voice',VOICE)}catch(e){}SYS.call('voice.stop').catch(()=>{});
+      if(VOICE){const st=await voiceReady(VOICE);if(st)SYS.call('voice.say',{voice:VOICE,text:'Ciao! Da adesso ti rispondo anche a voce.'}).catch(()=>{})}};
+    async function speak(t){if(!VOICE||!t)return;try{let r=await SYS.call('voice.say',{voice:VOICE,text:t});
+      if(r&&r.need==='download'&&await voiceReady(VOICE))r=await SYS.call('voice.say',{voice:VOICE,text:t})}catch(e){}}
+    let REC=false,recT=null;
+    async function micDown(){if(busy)return;
+      if(REC){REC=false;clearTimeout(recT);mic.classList.remove('rec');{const t=$('.ai-toast',b);if(t)t.hidden=true}mic.disabled=true;const note=add('tool',`${DOTS0} Sto capendo cosa hai detto…`);
+        let r;try{r=await SYS.call('voice.listenStop')}catch(e){r={ok:false,message:e.message}}note.remove();mic.disabled=false;
+        if(!r.ok){toast(r.message||'Non ho capito.',true);return}ta.value=r.text;go();return}
+      let r=await SYS.call('voice.listenStart').catch(e=>({ok:false,message:e.message}));
+      if(r.need==='download'){if(!await voiceReady(VOICE))return;r=await SYS.call('voice.listenStart').catch(e=>({ok:false,message:e.message}))}
+      if(!r.ok){toast(r.message||'Il microfono non risponde.',true);return}
+      REC=true;mic.classList.add('rec');toast('Ti ascolto… clicca di nuovo il microfono quando hai finito.');recT=setTimeout(()=>{if(REC)micDown()},45000)}
+    mic.onclick=micDown;
     send.onclick=()=>{if(busy&&ctrl){ctrl.abort();return}go()};
     async function runTool(name,args){
       if(name==='apri_programma'){const map={internet:['nat','browser'],word:['nat','word'],excel:['nat','sheet'],presentazioni:['nat','deck'],video:['nat','player'],file:['app','files'],impostazioni:['app','settings'],calcolatrice:['app','calc'],note:['app','notes']};
@@ -1397,40 +1437,45 @@ function renderAssistant(b){
       if(name==='crea_preventivo'){const r=await SYS.call('doc.preventivo',args||{});
         if(!r.ok)return 'Non sono riuscito a creare il preventivo.';SYS.call('open.with',{path:r.path}).catch(()=>{});
         add('tool',`${I('m-word',20)} Ho creato <b>${esc(r.name)}</b> (totale ${esc(r.totale||'')}) nella cartella Documenti e l'ho aperto.`);return 'Creato e aperto: '+r.name+', totale '+(r.totale||'')}
+      if(name==='cerca_web'){add('tool',`${I('browser',20)} Cerco su internet: <b>${esc(args.testo||'')}</b>`);const r=await SYS.call('web.search',{q:args.testo||''});
+        if(!r.ok)return r.message||'Ricerca non riuscita.';return (r.results||[]).map((x,i)=>`${i+1}. ${x.title}\n${x.url}\n${x.snippet}`).join('\n\n')||'Nessun risultato.'}
+      if(name==='leggi_pagina'){let host='';try{host=new URL(/^https?:/.test(args.url)?args.url:'https://'+args.url).hostname}catch(e){}add('tool',`${I('browser',20)} Leggo <b>${esc(host||args.url||'')}</b>`);
+        const r=await SYS.call('web.read',{url:args.url||''});if(!r.ok)return r.message||'Pagina non disponibile.';return (r.title?r.title+'\n':'')+r.url+'\n\n'+r.text}
       if(name==='cerca_file'){const r=await SYS.call('fs.search',{q:args.testo||''});const L=(r.results||[]).slice(0,8).map(x=>x.path);return L.length?L.join('\n'):'Nessun file trovato.'}
       return 'Strumento sconosciuto.'}
     async function go(){const q=ta.value.trim();if(!q||busy)return;ta.value='';
-      add('user',esc(q).replace(/\n/g,'<br>'));msgs.push({role:'user',content:q});
+      SYS.call('voice.stop').catch(()=>{});add('user',esc(q).replace(/\n/g,'<br>'));msgs.push({role:'user',content:q});
       busy=true;send.textContent='Ferma';
-      try{for(let round=0;round<3;round++){
-        const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';const out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',calls={},t0=performance.now(),first=false;
+      try{for(let round=0;round<8;round++){
+        const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';const out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',think='',calls={},t0=performance.now(),first=false;
         const tick=setInterval(()=>{const e=$('.ai-sec',out);if(e)e.textContent=Math.round((performance.now()-t0)/1000)+' s'},1000);
         ctrl=new AbortController();
         const res=await fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},signal:ctrl.signal,
-          body:JSON.stringify({messages:[{role:'system',content:AI_SYS},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:1500,chat_template_kwargs:{enable_thinking:false},cache_prompt:true})});
+          body:JSON.stringify({messages:[{role:'system',content:AI_SYS()},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:8000,cache_prompt:true})});
         const rd=res.body.getReader(),dec=new TextDecoder();let buf='';
         while(true){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
           while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line.startsWith('data:'))continue;const d=line.slice(5).trim();if(d==='[DONE]')continue;
             let j;try{j=JSON.parse(d)}catch(e){continue}const dl=j.choices&&j.choices[0]&&j.choices[0].delta||{};
-            if(dl.content){text+=dl.content;out.innerHTML=mdLite(text.replace(/<think>[\s\S]*?(<\/think>|$)/g,''));log.scrollTop=log.scrollHeight}
+            if(dl.content){text+=dl.content;const vis=text.replace(/<think>[\s\S]*?(<\/think>|$)/g,'');if(vis.trim()){out.innerHTML=mdLite(vis);log.scrollTop=log.scrollHeight}}
             (dl.tool_calls||[]).forEach(tc=>{const k=tc.index||0;calls[k]=calls[k]||{id:tc.id||('c'+k),name:'',args:''};if(tc.id)calls[k].id=tc.id;if(tc.function){if(tc.function.name)calls[k].name+=tc.function.name;if(tc.function.arguments)calls[k].args+=tc.function.arguments}});
-            if(dl.reasoning_content&&!text&&!$('.ai-think',out))out.innerHTML=DOTS+' <small class="ai-phase ai-think">Sto ragionando… <span class="ai-sec"></span></small>';
+            if(dl.reasoning_content){think+=dl.reasoning_content;if(!text){if(!$('.ai-think',out))out.innerHTML=DOTS+' <small class="ai-phase ai-think">Sto ragionando… <span class="ai-sec"></span></small><div class="ai-live ai-thinklive"></div>';
+              const tl=$('.ai-thinklive',out);if(tl){tl.textContent=think.slice(-600);tl.scrollTop=tl.scrollHeight}log.scrollTop=log.scrollHeight}}
             const c0=Object.values(calls)[0];
             if(c0&&!text){const m=c0.args.match(/"testo"\s*:\s*"((?:[^"\\]|\\.)*)/);const live=m?m[1].replace(/\\n/g,'\n').replace(/\\"/g,'"').replace(/\\\\/g,'\\'):'';
               out.innerHTML=(c0.name==='crea_preventivo'?`${DOTS} <small class="ai-phase">${I('m-word',16)} Preparo il preventivo… <span class="ai-sec"></span></small>`:c0.name==='crea_documento_word'?`${DOTS} <small class="ai-phase">${I('m-word',16)} Scrivo il documento… <span class="ai-sec"></span></small>`:DOTS)+(live?'<div class="ai-live">'+mdLite(live)+'</div>':'');log.scrollTop=log.scrollHeight}}}
         clearInterval(tick);
         const list=Object.values(calls);
         if(!list.length){const clean=text.replace(/<think>[\s\S]*?<\/think>/g,'').trim();msgs.push({role:'assistant',content:clean});
-          out.innerHTML=mdLite(clean)||'…';if(clean.length>120){const act=document.createElement('div');act.className='ai-act';act.innerHTML=`<button class="btn" data-doc>${I('m-word',16)} Crea documento Word con questo testo</button><button class="btn" data-copy>Copia</button>`;out.appendChild(act);
+          out.innerHTML=mdLite(clean)||'…';thinkBox(out,think,t0);speak(clean);if(clean.length>120){const act=document.createElement('div');act.className='ai-act';act.innerHTML=`<button class="btn" data-doc>${I('m-word',16)} Crea documento Word con questo testo</button><button class="btn" data-copy>Copia</button>`;out.appendChild(act);
             $('[data-doc]',act).onclick=async()=>{const h=clean.match(/^#{1,3}\s+(.+)$/m);await runTool('crea_documento_word',{titolo:h?h[1].replace(/\*/g,'').slice(0,60):'Documento',testo:clean})};
             $('[data-copy]',act).onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(clean);toast('Testo copiato.')}}
           break}
-        if(text.trim())out.innerHTML=mdLite(text.trim());else out.remove();
+        if(text.trim()){out.innerHTML=mdLite(text.replace(/<think>[\s\S]*?<\/think>/g,'').trim());thinkBox(out,think,t0)}else out.remove();
         msgs.push({role:'assistant',content:text||'',tool_calls:list.map(c=>({id:c.id,type:'function',function:{name:c.name,arguments:c.args||'{}'}}))});
         let needMore=false;
-        for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(c.name==='cerca_file')needMore=true}
+        for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(/^(cerca_file|cerca_web|leggi_pagina)$/.test(c.name))needMore=true}
         if(!needMore){const done=list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
-          msgs.push({role:'assistant',content:done});add('bot',esc(done));break}}
+          msgs.push({role:'assistant',content:done});add('bot',esc(done));speak(done);break}}
       }catch(e){if(e.name!=='AbortError')add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
       busy=false;ctrl=null;send.textContent='Invia';ta.focus()}
     ta.focus()}

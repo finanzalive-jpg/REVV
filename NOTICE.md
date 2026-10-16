@@ -28,3 +28,9 @@ Office suite, downloaded at build time from the official releases: [WordCraft](h
 Rise Drop implements the open [LocalSend protocol](https://github.com/localsend/protocol) (LocalSend is Apache-2.0); no LocalSend code is included.
 
 Windows is a trademark of Microsoft Corporation. Rise is an independent project and is not affiliated with or endorsed by Microsoft.
+
+## Assistant voice and web
+
+- whisper.cpp (MIT) with OpenAI Whisper models (MIT): speech recognition, models downloaded on first use.
+- Piper (MIT) with the Italian voices Paola and Riccardo from rhasspy/piper-voices: text to speech, voices downloaded on first use.
+- Web search through DuckDuckGo's public HTML page; pages are fetched directly by the user's computer.

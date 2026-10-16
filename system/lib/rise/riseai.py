@@ -199,10 +199,13 @@ def start(a):
             return {'ok': True, 'port': PORT}
         stop()
         threads = _physical_cores()
+        # Pieno regime: ragionamento acceso, contesto ampio, impostazioni consigliate da Qwen
+        # per la modalità "thinking" (temperatura 0.6, top-p 0.95, top-k 20).
+        ctx = '32768' if mid in ('4b', '9b') else '16384'
         cmd = [eng, '-m', _path(mid), '--host', '127.0.0.1', '--port', str(PORT),
-               '-c', '8192' if mid in ('4b', '9b') else '4096', '-t', str(threads), '--jinja',
-               '--temp', '0.7', '--top-p', '0.8', '--top-k', '20', '--min-p', '0',
-               '--presence-penalty', '1.5', '--no-webui', '--reasoning-budget', '0', '--cache-reuse', '256']
+               '-c', ctx, '-t', str(threads), '--jinja',
+               '--temp', '0.6', '--top-p', '0.95', '--top-k', '20', '--min-p', '0',
+               '--presence-penalty', '1.5', '--no-webui', '--cache-reuse', '256']
         log = open('/tmp/rise-assistente.log', 'w')
         env = dict(os.environ)
         env.pop('LD_PRELOAD', None)
