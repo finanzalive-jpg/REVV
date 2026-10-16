@@ -126,7 +126,26 @@ def _import(mid, src):
         st.pop('phase', None)
 
 
+_last_mount = [0]
+
+
+def _mount_sticks():
+    """Le chiavette inserite vengono aperte (in sola lettura) per cercare i modelli; al massimo ogni 10 s."""
+    if time.time() - _last_mount[0] < 10:
+        return
+    _last_mount[0] = time.time()
+    try:
+        import risesys
+        for d in risesys.fs_roots({}).get('drives', []):
+            if d.get('removable') and not d.get('mount') and d.get('label', '').lower() not in ('writable', 'casper-rw', 'rise-dati'):
+                risesys.fs_mount({'dev': d['dev']})
+    except Exception:
+        pass
+
+
 def _check_imports():
+    if not all(_model_file(m) for m in MODELS):
+        _mount_sticks()
     for mid in MODELS:
         if _model_file(mid) or (_dl.get(mid) or {}).get('running'):
             continue
