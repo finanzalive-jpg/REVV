@@ -19,6 +19,18 @@ export WEBKIT_DISABLE_DMABUF_RENDERER=1
 export GST_PLUGIN_FEATURE_RANK="vaapidecodebin:NONE,vaapih264dec:NONE,vaapivp9dec:NONE,vaapivp8dec:NONE,vaapiav1dec:NONE,vah264dec:NONE,vah265dec:NONE,vavp8dec:NONE,vavp9dec:NONE,vaav1dec:NONE,nvh264dec:NONE,nvh265dec:NONE"
 export LIBVA_DRIVER_NAME=none
 
+# Schede video Intel di 2ª-4ª generazione (circa 2011-2015: Sandy Bridge, Ivy Bridge, Haswell):
+# il browser disegna senza accelerazione 3D, che su questi chip può bloccare la grafica.
+for d in /sys/class/drm/card*/device; do
+  [ "$(cat "$d/vendor" 2>/dev/null)" = "0x8086" ] || continue
+  case "$(cat "$d/device" 2>/dev/null)" in
+    0x010*|0x011*|0x012*|0x015*|0x016*|0x040*|0x041*|0x042*|0x0a0*|0x0a1*|0x0a2*|0x0c0*|0x0c1*|0x0c2*|0x0d0*|0x0d1*|0x0d2*|0x0f3*)
+      export RISE_SAFE_GPU=1
+      export WEBKIT_DISABLE_COMPOSITING_MODE=1
+      echo "scheda video Intel vecchia: modalità grafica prudente" ;;
+  esac
+done
+
 fails=0
 while :; do
   # tiene il registro della sessione precedente per capire cosa è andato storto

@@ -188,6 +188,12 @@ class Rise(Gtk.Application):
         view = WebKit.WebView()
         view.set_background_color(Gdk.RGBA(0, 0, 0, 0))
         view.set_zoom_level(1.0)
+        if os.environ.get('RISE_SAFE_GPU') == '1':   # schede video vecchie: niente accelerazione 3D
+            try:
+                s0 = view.get_settings()
+                s0.set_hardware_acceleration_policy(WebKit.HardwareAccelerationPolicy.NEVER)
+            except Exception:
+                pass
         s = view.get_settings()
         s.set_allow_file_access_from_file_urls(True)
         s.set_allow_universal_access_from_file_urls(True)
