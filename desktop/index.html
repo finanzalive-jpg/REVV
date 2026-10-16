@@ -350,6 +350,7 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .ai-msg.tool{align-self:center;background:#eaf3ea;border:1px solid #b9dcb9;font-size:.92em;display:flex;align-items:center;gap:8px}
 .ai-msg .ai-h{font-size:1.08em}.ai-msg code{background:#eef2f6;padding:0 4px;border-radius:3px}
 .ai-act{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.ai-act .btn{font-size:.88em}
+.ai-phase{color:var(--ink-soft);display:inline-flex;align-items:center;gap:6px}.ai-live{margin-top:6px;padding:8px 10px;background:#f6f9fc;border:1px dashed var(--line);border-radius:6px;font-size:.92em;max-height:260px;overflow:auto}
 .ai-hint{margin:auto;max-width:460px;display:grid;gap:8px;text-align:center}
 .ai-chip{border:1px solid var(--line);background:#fff;border-radius:16px;padding:8px 12px;cursor:pointer;font:inherit;text-align:left}
 .ai-chip:hover{border-color:var(--accent)}
@@ -424,6 +425,7 @@ html[data-role=app] .tb{cursor:default}
 .drop-name{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}.drop-name label{font-size:.9em;color:var(--ink-soft)}
 .drop-name input{height:32px;border:1px solid #8fa9b8;border-radius:4px;padding:0 10px;font:inherit;min-width:200px}
 .site-link{color:var(--accent);font-weight:600}
+.bootwhy{margin-top:8px;font-family:var(--f-mono);font-size:.78em;line-height:1.5;background:#f3f6f9;border:1px solid var(--line);border-radius:6px;padding:8px 10px;max-height:260px;overflow:auto}.bootwhy b{display:block;font-family:var(--f-ui);margin:6px 0 2px}.bootwhy span{display:inline-block;min-width:80px;font-weight:600}
 .boot-badge{position:fixed;top:18px;left:50%;transform:translateX(-50%);display:flex;gap:12px;align-items:center;padding:10px 18px 10px 12px;border-radius:30px;
   background:linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.08)),rgba(10,40,60,.62);border:1px solid rgba(255,255,255,.4);color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.35);
   text-shadow:0 1px 2px rgba(0,0,0,.5);z-index:40;animation:bb-in .5s ease-out;transition:opacity .9s}
@@ -1220,11 +1222,13 @@ function renderSettings(b,opts){
     const kinds={video:['hw-video','Scheda video'],wifi:['hw-net','Wi‑Fi'],ethernet:['hw-net','Rete via cavo'],audio:['hw-audio','Audio'],webcam:['hw-cam','Webcam'],printer:['hw-printer','Stampante'],bluetooth:['hw-net','Bluetooth']};
     el.innerHTML=`<dl class="kv" data-id="info"><dt>Versione</dt><dd>Rise 0.5 “Alba”${r.live?' · da chiavetta':''}</dd><dt>Processore</dt><dd>${esc(r.cpu||'sconosciuto')} · ${r.cores} core</dd>
       <dt>Memoria in uso</dt><dd>${Math.round(r.memUsed/1048576)} MB su ${gb(r.memTotal)}<div class="meter"><i style="width:${Math.max(2,pct).toFixed(0)}%"></i></div></dd>
-      ${r.boot?`<dt>Avvio</dt><dd>${r.boot.toFixed(1).replace('.',',')} secondi</dd>`:''}${r.battery?`<dt>Batteria</dt><dd>${r.battery.percent}% · ${r.battery.status==='Charging'?'in carica':r.battery.status==='Full'?'carica':'in uso'}</dd>`:''}
+      ${r.boot?`<dt>Avvio</dt><dd>${r.boot.toFixed(1).replace('.',',')} secondi · <a href="#" class="site-link" id="bootwhy">Perché ci mette tanto?</a><div id="bootwhy-out"></div></dd>`:''}${r.battery?`<dt>Batteria</dt><dd>${r.battery.percent}% · ${r.battery.status==='Charging'?'in carica':r.battery.status==='Full'?'carica':'in uso'}</dd>`:''}
       <dt>Kernel</dt><dd>Linux ${esc(r.kernel)}</dd><dt>App installate</dt><dd>${Object.keys(APPS).length}, tutte utili</dd><dt>Pubblicità</dt><dd>Nessuna</dd><dt>Sito</dt><dd><a href="#" class="site-link" onclick="event.preventDefault();openSite()">www.iuppiter.ch</a> · codice su github.com/finanzalive-jpg/RISE</dd><dt>Icone</dt><dd>Win11 icon theme · licenza GPL 3</dd></dl>
       <div class="st-label" style="padding:18px 2px 0" data-id="hw">Hardware e driver</div><div class="hw">${r.hardware.map(x=>{const k=kinds[x.kind]||['hw-video',x.kind],ok=!!x.driver,nv=/nvidia/i.test(x.name)&&x.driver==='nouveau';
         return `<div>${I(k[0],30)}<span><b>${k[1]}</b><small>${esc(x.name)}${x.driver&&x.driver!=='usb'?' · driver '+esc(x.driver):''}</small></span><span class="tag${ok&&!nv?'':' warn'}">${!ok?'Driver mancante':nv?'Driver di base':'Funziona'}</span></div>`}).join('')||'<p class="note">Nessun componente riconosciuto.</p>'}</div>
       ${r.live?'<p class="note">Stai usando Rise dalla chiavetta: niente viene scritto sul disco del computer.</p>':''}`;
+    const bw=$('#bootwhy',el);if(bw)bw.onclick=e=>{e.preventDefault();const o=$('#bootwhy-out',el);o.innerHTML='<small>Leggo i tempi…</small>';
+      SYS.call('sys.bootwhy').then(w=>{o.innerHTML=`<div class="bootwhy"><small>${esc(w.total)}</small><b>Le fasi più lente:</b>${w.slow.map(x=>`<div><span>${esc(x.time)}</span> ${esc(x.unit)}</div>`).join('')}<b>Catena che ha deciso il tempo:</b>${w.chain.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`}).catch(()=>{o.innerHTML='<small>Non riesco a leggere i tempi.</small>'})};
   }).catch(e=>{const el=$('#sysinfo',main);if(el)el.innerHTML=`<p class="note">Non riesco a leggere le informazioni: ${esc(e.message)}</p>`})}
   function fillShare(){
     SYS.call('drop',{action:'devices'}).then(r=>{const sw=$('#s-drop',main),al=$('#s-alias',main);if(!sw)return;if(!r.ok){sw.closest('.row').querySelector('small').textContent=r.message;return}
@@ -1309,12 +1313,8 @@ function renderSettings(b,opts){
 }
 
 /* ================= Assistente (IA sul computer) ================= */
-const AI_SYS=`Sei l'Assistente di Rise, un sistema operativo semplice per computer. Rispondi sempre in italiano, con frasi chiare e brevi, senza gergo tecnico.
-Puoi usare questi strumenti quando l'utente lo chiede:
-- apri_programma: apre un programma (internet, word, excel, presentazioni, file, impostazioni, calcolatrice, note, video).
-- crea_documento_word: crea un documento Word con titolo e testo e lo apre. Usalo per lettere, preventivi, relazioni: scrivi tu il testo completo, ben organizzato, con titoli (# Titolo) ed elenchi (- voce).
-- cerca_file: cerca file nel computer per nome.
-Se mancano dati importanti (per un preventivo: cliente, voci, prezzi), chiedili prima con una domanda breve. Se non sai qualcosa, dillo.`;
+const AI_SYS=`Sei l'Assistente di Rise. Rispondi in italiano, chiaro e breve.
+Per lettere, preventivi e documenti usa crea_documento_word e scrivi tu il testo completo (titoli con #, elenchi con -, calcola i totali). Per aprire programmi usa apri_programma. Se mancano dati importanti chiedili prima.`;
 const AI_TOOLS=[
  {type:'function',function:{name:'apri_programma',description:'Apre un programma del computer',parameters:{type:'object',properties:{nome:{type:'string',enum:['internet','word','excel','presentazioni','file','impostazioni','calcolatrice','note','video']}},required:['nome']}}},
  {type:'function',function:{name:'crea_documento_word',description:'Crea un documento Word (.docx) nella cartella Documenti e lo apre',parameters:{type:'object',properties:{titolo:{type:'string',description:'Nome del documento'},testo:{type:'string',description:'Testo completo del documento. Titoli con # e elenchi con -'}},required:['titolo','testo']}}},
@@ -1384,16 +1384,20 @@ function renderAssistant(b){
       add('user',esc(q).replace(/\n/g,'<br>'));msgs.push({role:'user',content:q});
       busy=true;send.textContent='Ferma';
       try{for(let round=0;round<3;round++){
-        const out=add('bot','<span class="st run"></span>');let text='',calls={};
+        const out=add('bot','<span class="st run"></span> <small class="ai-phase">Sto leggendo la tua richiesta…</small>');let text='',calls={},t0=performance.now(),first=false;
         ctrl=new AbortController();
         const res=await fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},signal:ctrl.signal,
-          body:JSON.stringify({messages:[{role:'system',content:AI_SYS},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:1500})});
+          body:JSON.stringify({messages:[{role:'system',content:AI_SYS},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:1500,chat_template_kwargs:{enable_thinking:false},cache_prompt:true})});
         const rd=res.body.getReader(),dec=new TextDecoder();let buf='';
         while(true){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
           while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line.startsWith('data:'))continue;const d=line.slice(5).trim();if(d==='[DONE]')continue;
             let j;try{j=JSON.parse(d)}catch(e){continue}const dl=j.choices&&j.choices[0]&&j.choices[0].delta||{};
             if(dl.content){text+=dl.content;out.innerHTML=mdLite(text.replace(/<think>[\s\S]*?(<\/think>|$)/g,''));log.scrollTop=log.scrollHeight}
-            (dl.tool_calls||[]).forEach(tc=>{const k=tc.index||0;calls[k]=calls[k]||{id:tc.id||('c'+k),name:'',args:''};if(tc.id)calls[k].id=tc.id;if(tc.function){if(tc.function.name)calls[k].name+=tc.function.name;if(tc.function.arguments)calls[k].args+=tc.function.arguments}})}}
+            (dl.tool_calls||[]).forEach(tc=>{const k=tc.index||0;calls[k]=calls[k]||{id:tc.id||('c'+k),name:'',args:''};if(tc.id)calls[k].id=tc.id;if(tc.function){if(tc.function.name)calls[k].name+=tc.function.name;if(tc.function.arguments)calls[k].args+=tc.function.arguments}});
+            if(dl.reasoning_content&&!text)out.innerHTML='<span class="st run"></span> <small class="ai-phase">Sto ragionando…</small>';
+            const c0=Object.values(calls)[0];
+            if(c0&&!text){const m=c0.args.match(/"testo"\s*:\s*"((?:[^"\\]|\\.)*)/);const live=m?m[1].replace(/\\n/g,'\n').replace(/\\"/g,'"').replace(/\\\\/g,'\\'):'';
+              out.innerHTML=(c0.name==='crea_documento_word'?`<small class="ai-phase">${I('m-word',16)} Scrivo il documento…</small>`:'<span class="st run"></span>')+(live?'<div class="ai-live">'+mdLite(live)+'</div>':'');log.scrollTop=log.scrollHeight}}}
         const list=Object.values(calls);
         if(!list.length){const clean=text.replace(/<think>[\s\S]*?<\/think>/g,'').trim();msgs.push({role:'assistant',content:clean});
           out.innerHTML=mdLite(clean)||'…';if(clean.length>120){const act=document.createElement('div');act.className='ai-act';act.innerHTML=`<button class="btn" data-doc>${I('m-word',16)} Crea documento Word con questo testo</button><button class="btn" data-copy>Copia</button>`;out.appendChild(act);
@@ -1402,7 +1406,10 @@ function renderAssistant(b){
           break}
         if(text.trim())out.innerHTML=mdLite(text.trim());else out.remove();
         msgs.push({role:'assistant',content:text||'',tool_calls:list.map(c=>({id:c.id,type:'function',function:{name:c.name,arguments:c.args||'{}'}}))});
-        for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r})}}
+        let needMore=false;
+        for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(c.name==='cerca_file')needMore=true}
+        if(!needMore){const done=list.some(c=>c.name==='crea_documento_word')?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
+          msgs.push({role:'assistant',content:done});add('bot',esc(done));break}}
       }catch(e){if(e.name!=='AbortError')add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
       busy=false;ctrl=null;send.textContent='Invia';ta.focus()}
     ta.focus()}

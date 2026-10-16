@@ -849,7 +849,21 @@ def doc_create(a):
         z.writestr('word/document.xml', _docx_xml(a.get('text') or ''))
     return {'ok': True, 'path': path, 'name': os.path.basename(path)}
 
-CMDS = {'doc.create': doc_create, 'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
+
+def sys_bootwhy(_):
+    """Le fasi più lente dell'avvio (per capire cosa rallenta), in parole e secondi."""
+    _, total, _ = run(['systemd-analyze', '--no-pager'], timeout=20)
+    _, blame, _ = run(['systemd-analyze', 'blame', '--no-pager'], timeout=20)
+    _, chain, _ = run(['systemd-analyze', 'critical-chain', '--no-pager'], timeout=20)
+    items = []
+    for l in blame.splitlines()[:12]:
+        parts = l.split()
+        if len(parts) >= 2:
+            items.append({'time': ' '.join(parts[:-1]), 'unit': parts[-1]})
+    return {'total': total.splitlines()[0] if total else '', 'slow': items,
+            'chain': [l.strip() for l in chain.splitlines()[2:14]]}
+
+CMDS = {'sys.bootwhy': sys_bootwhy, 'doc.create': doc_create, 'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
         'net.diag': net_diag, 'audio.get': audio_get, 'audio.set': audio_set, 'bright.get': bright_get,
         'bright.set': bright_set, 'power': power, 'sys.info': sys_info, 'fs.roots': fs_roots,
         'fs.mount': fs_mount, 'fs.list': fs_list, 'fs.read': fs_read,

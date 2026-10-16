@@ -59,6 +59,23 @@ def _engine():
     return None
 
 
+def _physical_cores():
+    """Core veri (senza hyper-threading): con più thread i processori vecchi vanno più piano."""
+    try:
+        cores = {}
+        phys = core = None
+        for l in open('/proc/cpuinfo'):
+            if l.startswith('physical id'):
+                phys = l.split(':')[1].strip()
+            elif l.startswith('core id'):
+                core = l.split(':')[1].strip()
+                cores[(phys, core)] = 1
+        n = len(cores)
+    except OSError:
+        n = 0
+    return max(1, min(8, n or (os.cpu_count() or 2)))
+
+
 def recommended():
     """Il modello giusto per questo computer (dalla chiavetta i file stanno in memoria: si sta più bassi)."""
     ram = _mem_gb() - (1.5 if _live() else 0)
@@ -181,11 +198,11 @@ def start(a):
         if p and p.poll() is None and _srv['model'] == mid:
             return {'ok': True, 'port': PORT}
         stop()
-        threads = max(1, min(8, (os.cpu_count() or 2)))
+        threads = _physical_cores()
         cmd = [eng, '-m', _path(mid), '--host', '127.0.0.1', '--port', str(PORT),
                '-c', '8192' if mid in ('4b', '9b') else '4096', '-t', str(threads), '--jinja',
                '--temp', '0.7', '--top-p', '0.8', '--top-k', '20', '--min-p', '0',
-               '--presence-penalty', '1.5', '--no-webui']
+               '--presence-penalty', '1.5', '--no-webui', '--reasoning-budget', '0', '--cache-reuse', '256']
         log = open('/tmp/rise-assistente.log', 'w')
         env = dict(os.environ)
         env.pop('LD_PRELOAD', None)
