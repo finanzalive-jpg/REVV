@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  <b>Bring your PC back to life.</b>
+  <b>Bring your PC back to life.</b><br>
+  <a href="https://www.iuppiter.ch">www.iuppiter.ch</a>
 </p>
 
 <p align="center">
@@ -198,6 +199,10 @@ docs/           screenshots and documentation
 ## Contributing
 
 Rise is young and every hand helps: testing on old hardware is the most valuable thing you can do. Boot it on your oldest PC and [open an issue](../../issues/new) with the model, what worked and what did not. Code, translations and design ideas are welcome too: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Website
+
+News, downloads and contacts: **[www.iuppiter.ch](https://www.iuppiter.ch)**
 
 ## License and credits
 

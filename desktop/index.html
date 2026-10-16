@@ -388,6 +388,7 @@ html[data-role=app] .tb{cursor:default}
 .dc-files li{display:flex;gap:8px;align-items:center;font-size:.92em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dc-files .more{color:var(--ink-soft)}
 .drop-name{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}.drop-name label{font-size:.9em;color:var(--ink-soft)}
 .drop-name input{height:32px;border:1px solid #8fa9b8;border-radius:4px;padding:0 10px;font:inherit;min-width:200px}
+.site-link{color:var(--accent);font-weight:600}
 .boot-badge{position:fixed;top:18px;left:50%;transform:translateX(-50%);display:flex;gap:12px;align-items:center;padding:10px 18px 10px 12px;border-radius:30px;
   background:linear-gradient(rgba(255,255,255,.22),rgba(255,255,255,.08)),rgba(10,40,60,.62);border:1px solid rgba(255,255,255,.4);color:#fff;box-shadow:0 10px 30px rgba(0,0,0,.35);
   text-shadow:0 1px 2px rgba(0,0,0,.5);z-index:40;animation:bb-in .5s ease-out;transition:opacity .9s}
@@ -1146,7 +1147,7 @@ function renderSettings(b,opts){
         <dt>Pubblicità</dt><dd>Nessuna</dd>
         <dt>Aggiornamenti</dt><dd>Si installano allo spegnimento, mai mentre lavori</dd>
         <dt>Motore</dt><dd>Kernel Linux · interfaccia web</dd>
-        <dt>Icone</dt><dd>Oxygen (KDE) · licenza LGPL 3 · cartelle e PDF personalizzati per Rise</dd>
+        <dt>Sito</dt><dd><a href="#" class="site-link" onclick="event.preventDefault();openSite()">www.iuppiter.ch</a> · codice su github.com/finanzalive-jpg/RISE</dd><dt>Icone</dt><dd>Win11 icon theme · licenza GPL 3</dd>
       </dl>
       <div class="st-label" style="padding:18px 2px 0" data-id="hw">Hardware e driver</div><div class="hw">
        ${[['hw-video','Scheda video','Intel UHD Graphics 620'],['hw-net','Wi‑Fi','Intel Wireless‑AC 9560'],['hw-audio','Audio','Realtek ALC295'],['hw-printer','Stampante','HP DeskJet 2700 · driver installato da solo'],['hw-cam','Webcam','HD Camera integrata']]
@@ -1164,7 +1165,7 @@ function renderSettings(b,opts){
     el.innerHTML=`<dl class="kv" data-id="info"><dt>Versione</dt><dd>Rise 0.5 “Alba”${r.live?' · da chiavetta':''}</dd><dt>Processore</dt><dd>${esc(r.cpu||'sconosciuto')} · ${r.cores} core</dd>
       <dt>Memoria in uso</dt><dd>${Math.round(r.memUsed/1048576)} MB su ${gb(r.memTotal)}<div class="meter"><i style="width:${Math.max(2,pct).toFixed(0)}%"></i></div></dd>
       ${r.boot?`<dt>Avvio</dt><dd>${r.boot.toFixed(1).replace('.',',')} secondi</dd>`:''}${r.battery?`<dt>Batteria</dt><dd>${r.battery.percent}% · ${r.battery.status==='Charging'?'in carica':r.battery.status==='Full'?'carica':'in uso'}</dd>`:''}
-      <dt>Kernel</dt><dd>Linux ${esc(r.kernel)}</dd><dt>App installate</dt><dd>${Object.keys(APPS).length}, tutte utili</dd><dt>Pubblicità</dt><dd>Nessuna</dd><dt>Icone</dt><dd>Oxygen (KDE) · licenza LGPL 3 · personalizzate per Rise</dd></dl>
+      <dt>Kernel</dt><dd>Linux ${esc(r.kernel)}</dd><dt>App installate</dt><dd>${Object.keys(APPS).length}, tutte utili</dd><dt>Pubblicità</dt><dd>Nessuna</dd><dt>Sito</dt><dd><a href="#" class="site-link" onclick="event.preventDefault();openSite()">www.iuppiter.ch</a> · codice su github.com/finanzalive-jpg/RISE</dd><dt>Icone</dt><dd>Win11 icon theme · licenza GPL 3</dd></dl>
       <div class="st-label" style="padding:18px 2px 0" data-id="hw">Hardware e driver</div><div class="hw">${r.hardware.map(x=>{const k=kinds[x.kind]||['hw-video',x.kind],ok=!!x.driver,nv=/nvidia/i.test(x.name)&&x.driver==='nouveau';
         return `<div>${I(k[0],30)}<span><b>${k[1]}</b><small>${esc(x.name)}${x.driver&&x.driver!=='usb'?' · driver '+esc(x.driver):''}</small></span><span class="tag${ok&&!nv?'':' warn'}">${!ok?'Driver mancante':nv?'Driver di base':'Funziona'}</span></div>`}).join('')||'<p class="note">Nessun componente riconosciuto.</p>'}</div>
       ${r.live?'<p class="note">Stai usando Rise dalla chiavetta: niente viene scritto sul disco del computer.</p>':''}`;
@@ -1278,6 +1279,7 @@ $('#boot-btn').onclick=()=>{$('#boot-btn').hidden=true;$('#off-msg').textContent
   const lines=['kernel linux ✓','driver video, audio, wi‑fi ✓','rete: '+(S.wifi?S.net:'wi‑fi spento')+' ✓','desktop rise ✓'];let i=0;const t0=performance.now();
   (function n(){if(i<lines.length){$('#boot').textContent=lines[i++];setTimeout(n,380)}else{$('#off-msg').textContent='Pronto in '+((performance.now()-t0)/1000).toFixed(1).replace('.',',')+' secondi';setTimeout(()=>{$('#off').hidden=true},700)}})()};
 
+window.openSite=function(){const u='https://www.iuppiter.ch';if(NATIVE)SYS.call('native.open',{id:'browser',url:u}).catch(()=>{});else window.open(u,'_blank','noopener')}
 /* ================= Tempo di avvio ================= */
 function bootBadge(n=0){SYS.call('sys.boot').then(r=>{if(!r||!r.seconds){if(n<25)setTimeout(()=>bootBadge(n+1),3000);return}
   const d=document.createElement('div');d.className='boot-badge';d.innerHTML=`${I('orb',34)}<div><b>Rise pronto in ${r.seconds.toFixed(1).replace('.',',')} secondi</b><small>dall'accensione al desktop</small></div>`;

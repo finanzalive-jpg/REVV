@@ -94,7 +94,8 @@ NAME="Rise"
 VERSION="$VERSION"
 ID=rise
 ID_LIKE=ubuntu
-HOME_URL="https://github.com/finanzalive-jpg/RISE"
+HOME_URL="https://www.iuppiter.ch"
+SUPPORT_URL="https://github.com/finanzalive-jpg/RISE/issues"
 EOF
 
 log "6/9 Schermata di avvio e avvio live (initramfs)"
