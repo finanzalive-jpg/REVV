@@ -109,9 +109,20 @@ def weather(a):
     if not city:
         return {'ok': False, 'message': 'Per quale città?'}
     try:
-        g, _, _ = _get('https://geocoding-api.open-meteo.com/v1/search?' +
-                       urllib.parse.urlencode({'name': city, 'count': 1, 'language': 'it', 'format': 'json'}))
-        res = (json.loads(g).get('results') or [])
+        # "Milano, Italia", "Milano (MI)", "milano domani"…: si prova il nome completo, poi la parte prima
+        # della virgola, poi la prima parola; tra i risultati si preferiscono le città italiane.
+        tries, res = [], []
+        for c0 in (city, re.split(r'[,(]', city)[0], city.split()[0]):
+            c0 = c0.strip()
+            if c0 and c0 not in tries:
+                tries.append(c0)
+        for c0 in tries:
+            g, _, _ = _get('https://geocoding-api.open-meteo.com/v1/search?' +
+                           urllib.parse.urlencode({'name': c0, 'count': 5, 'language': 'it', 'format': 'json'}))
+            res = json.loads(g).get('results') or []
+            if res:
+                res.sort(key=lambda r: (r.get('country_code') != 'IT', -(r.get('population') or 0)))
+                break
         if not res:
             return {'ok': False, 'message': 'Non trovo la città “%s”.' % city}
         c = res[0]
