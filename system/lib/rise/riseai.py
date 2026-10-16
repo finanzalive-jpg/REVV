@@ -401,13 +401,15 @@ def start(a):
             return {'ok': True, 'port': PORT}
         stop()
         threads = _physical_cores()
+        # Una domanda alla volta (-np 1): i modelli Qwen3.5 hanno una memoria "ricorrente" che, con più domande
+        # in parallelo sullo stesso motore, può produrre caratteri senza senso.
         # Pieno regime: ragionamento acceso, contesto ampio, impostazioni consigliate da Qwen
         # per la modalità "thinking" (temperatura 0.6, top-p 0.95, top-k 20).
         ctx = '32768' if mid in ('4b', '9b') else '16384'
         cmd = [eng, '-m', _model_file(mid), '--host', '127.0.0.1', '--port', str(PORT),
                '-c', ctx, '-t', str(threads), '--jinja',
                '--temp', '0.6', '--top-p', '0.95', '--top-k', '20', '--min-p', '0',
-               '--presence-penalty', '1.5', '--no-webui', '--cache-reuse', '256']
+               '--presence-penalty', '1.5', '--no-webui', '-np', '1']
         # Scheda video: con i chip recenti (Intel Iris/UHD dal 2015, AMD, NVIDIA) llama.cpp usa Vulkan e
         # legge le domande molte volte più in fretta. Sulle schede Intel vecchie (RISE_SAFE_GPU) solo processore.
         if _gpu_ok():
@@ -444,7 +446,7 @@ def start(a):
 def _start_plain(eng, mid):
     """Versioni di llama-server che non conoscono qualche opzione: si riparte con quelle essenziali."""
     cmd = [eng, '-m', _model_file(mid), '--host', '127.0.0.1', '--port', str(PORT), '-c', '8192', '--jinja',
-           '-t', str(_physical_cores()), '-ngl', '0']
+           '-t', str(_physical_cores()), '-ngl', '0', '-np', '1']
     log = open('/tmp/rise-assistente.log', 'a')
     env = dict(os.environ)
     env.pop('LD_PRELOAD', None)

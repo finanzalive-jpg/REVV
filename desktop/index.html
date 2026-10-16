@@ -1457,10 +1457,10 @@ function renderAssistant(b){
       return 'Strumento sconosciuto.'}
     async function go(){const q=ta.value.trim();if(!q||busy)return;ta.value='';
       SYS.call('voice.stop').catch(()=>{});add('user',esc(q).replace(/\n/g,'<br>'));msgs.push({role:'user',content:q});
-      busy=true;send.textContent='Ferma';
+      busy=true;send.textContent='Ferma';let tick=null,out=null;
       try{for(let round=0;round<8;round++){
-        const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';const out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',think='',calls={},t0=performance.now(),first=false;
-        const tick=setInterval(()=>{const e=$('.ai-sec',out);if(e)e.textContent=Math.round((performance.now()-t0)/1000)+' s'},1000);
+        const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',think='',calls={},t0=performance.now(),first=false;
+        clearInterval(tick);tick=setInterval(()=>{const e=$('.ai-sec',out);if(e)e.textContent=Math.round((performance.now()-t0)/1000)+' s'},1000);
         ctrl=new AbortController();
         const res=await fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},signal:ctrl.signal,
           body:JSON.stringify({messages:[{role:'system',content:AI_SYS()},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:8000,cache_prompt:true,chat_template_kwargs:{enable_thinking:THINK}})});
@@ -1488,7 +1488,8 @@ function renderAssistant(b){
         for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(/^(cerca_file|cerca_web|leggi_pagina)$/.test(c.name))needMore=true}
         if(!needMore){const done=list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
           msgs.push({role:'assistant',content:done});add('bot',esc(done));speak(done);break}}
-      }catch(e){if(e.name!=='AbortError')add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
+      }catch(e){if(e.name==='AbortError'){if(out&&$('.ai-dots',out))out.innerHTML='<small class="ai-phase">Interrotto.</small>'}else add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
+      clearInterval(tick);
       busy=false;ctrl=null;send.textContent='Invia';ta.focus()}
     ta.focus()}
   boot();

@@ -232,24 +232,78 @@ def listen_cancel(_=None):
     return {'ok': True}
 
 
+def _trim(path):
+    """Toglie il silenzio prima e dopo la voce (sul silenzio il riconoscimento "inventa" frasi).
+    Restituisce il percorso del file ripulito, oppure None se non c'è voce."""
+    import array
+    import math
+    import wave
+    try:
+        with open(path, 'rb') as f:
+            raw = f.read()
+    except OSError:
+        return None
+    pcm = array.array('h', raw[44:len(raw) - (len(raw) - 44) % 2])
+    fr = 320                                            # 20 ms
+    levels = []
+    for i in range(0, len(pcm) - fr, fr):
+        c = pcm[i:i + fr:2]
+        levels.append(math.sqrt(sum(x * x for x in c) / len(c)))
+    if not levels:
+        return None
+    srt = sorted(levels)
+    noise = srt[len(srt) // 5]                          # il 20% più silenzioso = rumore di fondo
+    thr = max(noise * 3.0, 300)
+    speech = [i for i, l in enumerate(levels) if l > thr]
+    if len(speech) < 8:                                 # meno di 0,16 s sopra il rumore: nessuna voce
+        return None
+    a = max(0, speech[0] - 15) * fr                     # 0,3 s prima
+    b = min(len(pcm), (speech[-1] + 20) * fr)           # 0,4 s dopo
+    out = path[:-4] + '-voce.wav'
+    with wave.open(out, 'wb') as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(16000)
+        w.writeframes(pcm[a:b].tobytes())
+    return out
+
+
+_FAKE = ('sottotitoli', 'amara.org', 'grazie per la visione', 'iscriviti al canale', 'qtss', 'grazie a tutti per la visione')
+
+
+def _hallucinated(text):
+    t = text.lower()
+    if any(k in t for k in _FAKE):
+        return True
+    w = re.findall(r"\w+", t)
+    if len(w) >= 8:
+        grams = [' '.join(w[i:i + 4]) for i in range(len(w) - 3)]
+        if len(set(grams)) < len(grams):
+            return True                                 # pezzi di frase ripetuti: tipico errore sul rumore
+    return False
+
+
 def listen_stop(_=None):
     long = time.time() - _rec['start']
     _stop_rec()
     if long < 0.6 or not os.path.exists(WAV_IN) or os.path.getsize(WAV_IN) < 8000:
         return {'ok': False, 'message': 'Non ho sentito niente. Controlla che il microfono sia acceso e riprova.'}
+    voice = _trim(WAV_IN)
+    if not voice:
+        return {'ok': False, 'message': 'Non ho sentito la tua voce. Parla un po’ più forte o più vicino al computer.'}
     threads = str(max(1, min(8, (os.cpu_count() or 2))))
-    cmd = [_whisper(), '-m', os.path.join(DIR, STT[_stt_id()][0]), '-f', WAV_IN, '-l', 'it',
-           '-t', threads, '-nt', '-np', '-bs', '3',
-           '--prompt', 'Domande in italiano all\'assistente del computer: che tempo fa a Roma, Milano, Napoli; '
-                       'scrivimi un preventivo; apri il browser; cerca su internet.']
+    cmd = [_whisper(), '-m', os.path.join(DIR, STT[_stt_id()][0]), '-f', voice, '-l', 'it',
+           '-t', threads, '-nt', '-np', '-bs', '5', '-mc', '0', '-sns']
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if r.returncode != 0 and 'unknown' in (r.stderr or '').lower():      # versioni senza qualche opzione
+            r = subprocess.run(cmd[:cmd.index('-bs')], capture_output=True, text=True, timeout=180)
     except subprocess.TimeoutExpired:
         return {'ok': False, 'message': 'Ci ho messo troppo a capire. Riprova con una frase più corta.'}
     text = ' '.join(l.strip() for l in r.stdout.splitlines() if l.strip())
     text = re.sub(r'\[[^\]]*\]|\([^)]*\)', '', text).strip()      # [musica], (rumore)…
-    if not text:
-        return {'ok': False, 'message': 'Non ho capito. Riprova parlando un po’ più vicino al microfono.'}
+    if not text or _hallucinated(text):
+        return {'ok': False, 'message': 'Non ho capito bene. Riprova parlando un po’ più vicino al microfono.'}
     return {'ok': True, 'text': text}
 
 
