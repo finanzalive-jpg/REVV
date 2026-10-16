@@ -1333,7 +1333,7 @@ Hai accesso a internet: per notizie, prezzi, orari, meteo, persone, prodotti o q
 Per un preventivo usa SEMPRE crea_preventivo: passa azienda, cliente, oggetto e le voci con quantità e prezzo unitario; i totali e l'IVA li calcola Rise. Non inventare nomi, indirizzi o prezzi: se mancano il cliente o i prezzi chiedili prima, in una sola domanda.
 Per lettere e altri documenti usa crea_documento_word con un testo completo e curato, senza segnaposto tra parentesi quadre (titoli con #, elenchi con -, tabelle con |).
 Per aprire programmi usa apri_programma. Per trovare file del computer usa cerca_file.`;
-const AI_SYS=()=>AI_SYS_TXT+'\nOggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+', ore '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';
+const AI_SYS=()=>AI_SYS_TXT+'\nOggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';
 const AI_TOOLS=[
  {type:'function',function:{name:'apri_programma',description:'Apre un programma del computer',parameters:{type:'object',properties:{nome:{type:'string',enum:['internet','word','excel','presentazioni','file','impostazioni','calcolatrice','note','video']}},required:['nome']}}},
  {type:'function',function:{name:'crea_documento_word',description:'Crea un documento Word (.docx) nella cartella Documenti e lo apre',parameters:{type:'object',properties:{titolo:{type:'string',description:'Nome del documento'},testo:{type:'string',description:'Testo completo del documento. Titoli con # e elenchi con -'}},required:['titolo','testo']}}},
@@ -1401,6 +1401,8 @@ function renderAssistant(b){
       d.innerHTML=`<summary>Ha ragionato per ${Math.max(1,Math.round((performance.now()-t0)/1000))} s</summary><div></div>`;d.lastChild.textContent=think;out.prepend(d)}
     // ---- voce: risposte lette ad alta voce (Piper) e domande dette al microfono (whisper.cpp)
     const vsel=$('[data-voice]',body),mic=$('[data-mic]',body);let VOICE='f';try{const v=localStorage.getItem('rise.ai.voice');if(v!==null)VOICE=v}catch(e){}
+    fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:[{role:'system',content:AI_SYS()},{role:'user',content:'ciao'}],tools:AI_TOOLS,max_tokens:1,cache_prompt:true})}).catch(()=>{});
     vsel.value=VOICE;if(VOICE)SYS.call('voice.warm').catch(()=>{});
     async function voiceReady(v){let st;try{st=await SYS.call('voice.status')}catch(e){return false}
       const need=!st.sttReady||(v&&st.voices[v]&&!st.voices[v].ready);if(!need)return st;
@@ -1425,7 +1427,9 @@ function renderAssistant(b){
       let r=await SYS.call('voice.listenStart').catch(e=>({ok:false,message:e.message}));
       if(r.need==='download'){if(!await voiceReady(VOICE))return;r=await SYS.call('voice.listenStart').catch(e=>({ok:false,message:e.message}))}
       if(!r.ok){toast(r.message||'Il microfono non risponde.',true);return}
-      REC=true;mic.classList.add('rec');toast('Ti ascolto… clicca di nuovo il microfono quando hai finito.');recT=setTimeout(()=>{if(REC)micDown()},45000)}
+      REC=true;mic.classList.add('rec');toast('Ti ascolto… parla pure: quando smetti mi fermo da solo (o clicca di nuovo il microfono).');recT=setTimeout(()=>{if(REC)micDown()},45000);
+      const watch=setInterval(async()=>{if(!REC||!b.isConnected){clearInterval(watch);return}let st;try{st=await SYS.call('voice.status')}catch(e){return}
+        if(REC&&st&&!st.recording){clearInterval(watch);micDown()}},400)}
     mic.onclick=micDown;
     send.onclick=()=>{if(busy&&ctrl){ctrl.abort();return}go()};
     async function runTool(name,args){

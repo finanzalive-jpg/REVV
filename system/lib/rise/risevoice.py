@@ -57,8 +57,8 @@ def _mem_gb():
 
 
 def _stt_id():
-    # sui computer con più memoria e processore si usa il modello più preciso
-    return 'small' if _mem_gb() >= 7.5 and (os.cpu_count() or 2) >= 8 else 'base'
+    # "small" capisce l'italiano molto meglio di "base" (che su microfoni modesti sbaglia parecchie parole)
+    return 'small'
 
 
 def _which(*names):
@@ -99,7 +99,7 @@ def status(_=None):
             'voices': {k: {'name': KOKORO_NAMES[k] if kk else v[0], 'ready': _have_voice(k),
                            'mb': sum(m for f, m in KOKORO_FILES if not os.path.exists(os.path.join(DIR, f))) if kk else v[3]}
                        for k, v in VOICES.items()},
-            'sttMb': STT[_stt_id()][2], 'download': dict(_dl), 'recording': bool(_rec['proc'] and _rec['proc'].poll() is None)}
+            'sttMb': STT[_stt_id()][2], 'download': dict(_dl), 'recording': bool(_rec['proc'] and _rec['proc'].poll() is None), 'autoStopped': bool(_rec.get('auto'))}
 
 
 # ---------- scaricamento dei modelli ----------
@@ -169,12 +169,47 @@ def listen_start(_=None):
         return {'ok': False, 'message': 'Non trovo il programma per registrare dal microfono.'}
     _rec['proc'] = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     _rec['start'] = time.time()
+    _rec['auto'] = False
+    threading.Thread(target=_watch_silence, args=(_rec['proc'],), daemon=True).start()
     return {'ok': True}
 
 
-def _stop_rec():
-    p = _rec['proc']
-    _rec['proc'] = None
+def _watch_silence(proc):
+    """Ferma la registrazione da solo quando, dopo aver parlato, si resta in silenzio per un secondo e mezzo."""
+    import array
+    import math
+    pos, noise, spoke, quiet, t0 = 44, None, False, 0.0, time.time()
+    step = 3200 * 2                                   # 0,2 secondi a 16 kHz, 16 bit
+    while _rec['proc'] is proc and proc.poll() is None:
+        time.sleep(0.2)
+        try:
+            with open(WAV_IN, 'rb') as f:
+                f.seek(pos)
+                data = f.read()
+        except OSError:
+            continue
+        while len(data) >= step:
+            chunk, data = data[:step], data[step:]
+            pos += step
+            a = array.array('h', chunk)
+            rms = math.sqrt(sum(x * x for x in a[::4]) / max(1, len(a[::4])))
+            if noise is None:
+                noise = rms
+                continue
+            level = max(noise * 2.5, 350)
+            if rms > level:
+                spoke, quiet = True, 0.0
+            else:
+                if not spoke:
+                    noise = noise * 0.9 + rms * 0.1     # si adatta al rumore di fondo
+                quiet += 0.2
+        if (spoke and quiet >= 1.5) or time.time() - t0 > 30 or (not spoke and time.time() - t0 > 12):
+            _rec['auto'] = True
+            _stop_rec_proc(proc)
+            return
+
+
+def _stop_rec_proc(p):
     if p and p.poll() is None:
         try:
             os.killpg(p.pid, signal.SIGINT)
@@ -184,6 +219,12 @@ def _stop_rec():
                 p.kill()
             except Exception:
                 pass
+
+
+def _stop_rec():
+    p = _rec['proc']
+    _rec['proc'] = None
+    _stop_rec_proc(p)
 
 
 def listen_cancel(_=None):
@@ -198,7 +239,9 @@ def listen_stop(_=None):
         return {'ok': False, 'message': 'Non ho sentito niente. Controlla che il microfono sia acceso e riprova.'}
     threads = str(max(1, min(8, (os.cpu_count() or 2))))
     cmd = [_whisper(), '-m', os.path.join(DIR, STT[_stt_id()][0]), '-f', WAV_IN, '-l', 'it',
-           '-t', threads, '-nt', '-np']
+           '-t', threads, '-nt', '-np', '-bs', '3',
+           '--prompt', 'Domande in italiano all\'assistente del computer: che tempo fa a Roma, Milano, Napoli; '
+                       'scrivimi un preventivo; apri il browser; cerca su internet.']
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
     except subprocess.TimeoutExpired:
