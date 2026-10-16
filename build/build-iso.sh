@@ -62,8 +62,21 @@ mkdir -p "$CH/tmp/craft"
 for app in wordcraft gridcraft deckcraft; do
   url="$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/storytold/$app/releases/latest" 2>/dev/null \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((a["browser_download_url"] for a in d.get("assets", []) if a["name"].endswith("-linux-x86_64.deb")), ""))' 2>/dev/null || true)"
+  if [ -z "$url" ]; then
+    tag="$(git ls-remote --tags --sort=-v:refname "https://github.com/storytold/$app" 'v*' 2>/dev/null | grep -v '\^{}' | head -1 | sed 's#.*refs/tags/v##')"
+    [ -n "$tag" ] && url="https://github.com/storytold/$app/releases/download/v$tag/$app-$tag-linux-x86_64.deb"
+  fi
+  echo "$app: $url"
   if [ -n "$url" ] && curl -fsSL -o "$CH/tmp/craft/$app.deb" "$url"; then
     chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "/tmp/craft/$app.deb" || echo "ATTENZIONE: $app non installato"
+    # Rise avvia il programma col nome semplice (wordcraft, gridcraft, deckcraft): se il pacchetto
+    # mette l'eseguibile altrove o con un altro nome, si crea il collegamento.
+    if ! chroot "$CH" sh -c "command -v $app" >/dev/null 2>&1; then
+      exe="$(chroot "$CH" dpkg -L "$app" 2>/dev/null | grep -iE "/(usr/)?(bin|opt/[^/]+)/[^/]*$app[^/]*$" | head -1)"
+      [ -z "$exe" ] && exe="$(chroot "$CH" sh -c "dpkg -L $app 2>/dev/null | while read f; do [ -f \"\$f\" ] && [ -x \"\$f\" ] && echo \"\$f\"; done" | grep -i "$app" | head -1)"
+      [ -n "$exe" ] && ln -sf "$exe" "$CH/usr/local/bin/$app"
+    fi
+    echo "$app: $(chroot "$CH" sh -c "command -v $app" || echo 'NON TROVATO')"
   else
     echo "ATTENZIONE: non trovo il pacchetto di $app, continuo senza"
   fi

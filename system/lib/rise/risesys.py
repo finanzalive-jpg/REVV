@@ -793,61 +793,280 @@ def register_apps(pkg):
 
 
 # ---------------- Documenti Word (.docx) creati dall'Assistente ----------------
-def _docx_xml(text):
+_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+_XML = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+
+
+def _docx_runs(text, bold=False):
     from xml.sax.saxutils import escape
+    runs = []
+    for part in re.split(r'(\*\*[^*]+\*\*|__[^_]+__)', text):
+        if not part:
+            continue
+        strong = part[:2] in ('**', '__') and part[-2:] == part[:2] and len(part) > 4
+        t = part[2:-2] if strong else part.replace('**', '')
+        rpr = '<w:rPr><w:b/></w:rPr>' if (bold or strong) else ''
+        runs.append('<w:r>%s<w:t xml:space="preserve">%s</w:t></w:r>' % (rpr, escape(t)))
+    return ''.join(runs) or '<w:r><w:t></w:t></w:r>'
+
+
+def _docx_para(text, style=None, bold=False, align=None, num=False):
+    ppr = ''
+    if style:
+        ppr += '<w:pStyle w:val="%s"/>' % style
+    if num:
+        ppr += '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
+    if align:
+        ppr += '<w:jc w:val="%s"/>' % align
+    return '<w:p>%s%s</w:p>' % ('<w:pPr>%s</w:pPr>' % ppr if ppr else '', _docx_runs(text, bold))
+
+
+def _docx_table(rows):
+    cols = max(len(r) for r in rows)
+    # la prima colonna (descrizione) più larga, le altre (numeri) più strette
+    widths = [9638 // cols] * cols if cols < 3 else [9638 - 1900 * (cols - 1)] + [1900] * (cols - 1)
+    if cols == 4:
+        widths = [4738, 900, 2000, 2000]
+    grid = ''.join('<w:gridCol w:w="%d"/>' % w for w in widths)
     out = []
+    for i, r in enumerate(rows):
+        cells = []
+        for j in range(cols):
+            width = widths[j]
+            c = r[j] if j < len(r) else ''
+            num = bool(re.fullmatch(r'[-+€$\s\d.,%]+', c.strip())) and c.strip() != ''
+            shade = '<w:shd w:val="clear" w:color="auto" w:fill="DCE8FA"/>' if i == 0 else ''
+            cells.append('<w:tc><w:tcPr><w:tcW w:w="%d" w:type="dxa"/>%s</w:tcPr>%s</w:tc>'
+                         % (width, shade, _docx_para(c.strip(), 'Tabella', bold=(i == 0), align='right' if num and i else None)))
+        out.append('<w:tr>%s</w:tr>' % ''.join(cells))
+    return ('<w:tbl><w:tblPr><w:tblStyle w:val="Griglia"/><w:tblW w:w="5000" w:type="pct"/></w:tblPr>'
+            '<w:tblGrid>%s</w:tblGrid>%s</w:tbl>' % (grid, ''.join(out)))
+
+
+def _docx_xml(text):
+    """Testo semplice (con # titoli, - elenchi, **grassetto** e tabelle | a | b |) → corpo di un .docx."""
+    out, table = [], []
+
+    def flush():
+        if table:
+            out.append(_docx_table(table))
+            out.append(_docx_para(''))
+            table.clear()
+
     for line in text.replace('\r', '').split('\n'):
-        l = line.rstrip()
-        size, bold = None, False
-        if l.startswith('### '):
-            l, size, bold = l[4:], 26, True
-        elif l.startswith('## '):
-            l, size, bold = l[3:], 30, True
-        elif l.startswith('# '):
-            l, size, bold = l[2:], 36, True
-        elif l.startswith(('- ', '* ')):
-            l = '• ' + l[2:]
-        runs = []
-        parts = re.split(r'(\*\*[^*]+\*\*)', l)
-        for part in parts:
-            if not part:
-                continue
-            b = bold or (part.startswith('**') and part.endswith('**'))
-            t = part[2:-2] if part.startswith('**') and part.endswith('**') else part
-            rpr = ('<w:b/>' if b else '') + ('<w:sz w:val="%d"/>' % size if size else '')
-            runs.append('<w:r>%s<w:t xml:space="preserve">%s</w:t></w:r>' % ('<w:rPr>%s</w:rPr>' % rpr if rpr else '', escape(t)))
-        out.append('<w:p>%s</w:p>' % ''.join(runs))
-    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+        l = line.strip()
+        if l.startswith('|') and l.endswith('|') and len(l) > 1:
+            cells = [c for c in l[1:-1].split('|')]
+            if all(re.fullmatch(r'\s*:?-{2,}:?\s*', c) for c in cells):
+                continue                      # riga |---|---| delle tabelle markdown
+            table.append(cells)
+            continue
+        flush()
+        m = re.match(r'(#{1,3})\s+(.*)', l)
+        if m:
+            out.append(_docx_para(m.group(2).replace('**', ''), 'Titolo%d' % len(m.group(1))))
+        elif re.match(r'[-*•]\s+', l):
+            out.append(_docx_para(re.sub(r'^[-*•]\s+', '', l), 'Elenco', num=True))
+        elif re.fullmatch(r'-{3,}|\*{3,}|_{3,}', l):
+            out.append('<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="9AA7B8"/></w:pBdr></w:pPr></w:p>')
+        else:
+            out.append(_docx_para(l))
+    flush()
+    return (_XML + '<w:document xmlns:w="%s" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>' % _W
             + ''.join(out) +
-            '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>'
-            '</w:body></w:document>')
+            '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" '
+            'w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>')
+
+
+def _docx_styles():
+    def heading(n, size, color, before):
+        return ('<w:style w:type="paragraph" w:styleId="Titolo%d"><w:name w:val="heading %d"/><w:basedOn w:val="Normal"/>'
+                '<w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="%d" w:after="120"/>'
+                '<w:outlineLvl w:val="%d"/></w:pPr><w:rPr><w:b/><w:color w:val="%s"/><w:sz w:val="%d"/></w:rPr></w:style>'
+                % (n, n, before, n - 1, color, size))
+    return (_XML + '<w:styles xmlns:w="%s">' % _W +
+            '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Liberation Sans" w:hAnsi="Liberation Sans" w:cs="Liberation Sans" w:eastAsia="Liberation Sans"/>'
+            '<w:sz w:val="22"/><w:lang w:val="it-IT"/></w:rPr></w:rPrDefault>'
+            '<w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
+            '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>'
+            + heading(1, 36, '1F4E9E', 0) + heading(2, 28, '2456E0', 240) + heading(3, 24, '333333', 200) +
+            '<w:style w:type="paragraph" w:styleId="Elenco"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/>'
+            '<w:pPr><w:spacing w:after="60"/><w:ind w:left="720"/></w:pPr></w:style>'
+            '<w:style w:type="paragraph" w:styleId="Tabella"><w:name w:val="Table Text"/><w:basedOn w:val="Normal"/>'
+            '<w:pPr><w:spacing w:before="40" w:after="40" w:line="240" w:lineRule="auto"/></w:pPr></w:style>'
+            '<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/>'
+            '<w:tblPr><w:tblCellMar><w:left w:w="108" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>'
+            '<w:style w:type="table" w:styleId="Griglia"><w:name w:val="Table Grid"/><w:basedOn w:val="TableNormal"/><w:tblPr><w:tblBorders>'
+            + ''.join('<w:%s w:val="single" w:sz="4" w:space="0" w:color="9AA7B8"/>' % e for e in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV')) +
+            '</w:tblBorders></w:tblPr></w:style></w:styles>')
+
+
+def _docx_numbering():
+    return (_XML + '<w:numbering xmlns:w="%s"><w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/>'
+            '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/>'
+            '<w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr></w:lvl></w:abstractNum>'
+            '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>' % _W)
 
 
 def doc_create(a):
+    """Crea un vero documento Word (.docx) in Documenti a partire dal testo scritto dall'Assistente."""
     import zipfile
-    title = re.sub(r'[\\/:*?"<>|\n]+', ' ', (a.get('title') or 'Documento').strip())[:80] or 'Documento'
-    folder = next((os.path.join(HOME, d) for d in ('Documenti', 'Documents') if os.path.isdir(os.path.join(HOME, d))), HOME)
+    from xml.sax.saxutils import escape
+    text = a.get('text') or a.get('testo') or ''
+    title = (a.get('title') or a.get('titolo') or '').strip()
+    if not title:                               # niente titolo: si usa il primo titolo del testo
+        m = re.search(r'^#{1,3}\s+(.+)$', text, re.M)
+        title = m.group(1) if m else 'Documento'
+    title = re.sub(r'[\\/:*?"<>|\n#]+', ' ', title.replace('**', '')).strip()[:70].strip() or 'Documento'
+    folder = os.path.join(HOME, 'Documenti')
+    if not os.path.isdir(folder) and os.path.isdir(os.path.join(HOME, 'Documents')):
+        folder = os.path.join(HOME, 'Documents')
+    os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, title + '.docx')
     n = 2
     while os.path.exists(path):
         path = os.path.join(folder, '%s (%d).docx' % (title, n))
         n += 1
-    ct = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-          '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    now = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    ov = '<Override PartName="/%s" ContentType="application/vnd.openxmlformats-%s+xml"/>'
+    ct = (_XML + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
           '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
           '<Default Extension="xml" ContentType="application/xml"/>'
-          '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
-          '</Types>')
-    rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
-            '</Relationships>')
-    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
+          + ov % ('word/document.xml', 'officedocument.wordprocessingml.document.main')
+          + ov % ('word/styles.xml', 'officedocument.wordprocessingml.styles')
+          + ov % ('word/numbering.xml', 'officedocument.wordprocessingml.numbering')
+          + ov % ('docProps/core.xml', 'package.core-properties')
+          + ov % ('docProps/app.xml', 'officedocument.extended-properties') + '</Types>')
+    rel = '<Relationship Id="%s" Type="%s" Target="%s"/>'
+    od = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/'
+    rels = (_XML + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            + rel % ('rId1', od + 'officeDocument', 'word/document.xml')
+            + rel % ('rId2', 'http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties', 'docProps/core.xml')
+            + rel % ('rId3', od + 'extended-properties', 'docProps/app.xml') + '</Relationships>')
+    docrels = (_XML + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+               + rel % ('rId1', od + 'styles', 'styles.xml') + rel % ('rId2', od + 'numbering', 'numbering.xml') + '</Relationships>')
+    core = (_XML + '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
+            'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
+            'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>%s</dc:title><dc:creator>Rise</dc:creator>'
+            '<dcterms:created xsi:type="dcterms:W3CDTF">%s</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">%s</dcterms:modified>'
+            '</cp:coreProperties>' % (escape(title), now, now))
+    app = (_XML + '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
+           '<Application>Rise Assistente</Application></Properties>')
+    tmp = path + '.tmp'
+    with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as z:
         z.writestr('[Content_Types].xml', ct)
         z.writestr('_rels/.rels', rels)
-        z.writestr('word/document.xml', _docx_xml(a.get('text') or ''))
-    return {'ok': True, 'path': path, 'name': os.path.basename(path)}
+        z.writestr('docProps/core.xml', core)
+        z.writestr('docProps/app.xml', app)
+        z.writestr('word/_rels/document.xml.rels', docrels)
+        z.writestr('word/styles.xml', _docx_styles())
+        z.writestr('word/numbering.xml', _docx_numbering())
+        z.writestr('word/document.xml', _docx_xml(text))
+    os.replace(tmp, path)
+    return {'ok': True, 'path': path, 'name': os.path.basename(path), 'size': os.path.getsize(path)}
+
+
+def _num(v):
+    """'1.234,50 €' / '1234.5' / 12 → 1234.5"""
+    if isinstance(v, (int, float)):
+        return float(v)
+    t = re.sub(r'[^\d,.\-]', '', str(v or ''))
+    if not t:
+        return 0.0
+    if ',' in t and '.' in t:
+        t = t.replace('.', '').replace(',', '.') if t.rfind(',') > t.rfind('.') else t.replace(',', '')
+    elif ',' in t:
+        t = t.replace(',', '.')
+    elif t.count('.') > 1 or re.fullmatch(r'\d{1,3}\.\d{3}', t):
+        t = t.replace('.', '')
+    try:
+        return float(t)
+    except ValueError:
+        return 0.0
+
+
+def _eur(x):
+    s = '{:,.2f}'.format(x).replace(',', 'X').replace('.', ',').replace('X', '.')
+    return s + ' €'
+
+
+def doc_preventivo(a):
+    """Preventivo impaginato: i conti (righe, imponibile, IVA, totale) li fa Rise, non l'Assistente."""
+    conf_p = os.path.join(HOME, '.config', 'rise', 'preventivi.json')
+    try:
+        conf = json.load(open(conf_p))
+    except (OSError, ValueError):
+        conf = {}
+    year = time.strftime('%Y')
+    azienda = (a.get('azienda') or conf.get('azienda') or '').strip()
+    numero = str(a.get('numero') or '').strip()
+    if not numero:
+        n = conf.get('ultimo', {}).get(year, 0) + 1
+        numero = '%d/%s' % (n, year)
+        conf.setdefault('ultimo', {})[year] = n
+    if a.get('azienda'):
+        conf['azienda'] = azienda
+    data = (a.get('data') or time.strftime('%d/%m/%Y')).strip()
+    cliente = (a.get('cliente') or '').strip()
+    oggetto = (a.get('oggetto') or '').strip()
+    iva = _num(a.get('iva')) if a.get('iva') not in (None, '') else 22.0
+    rows, imponibile = [], 0.0
+    for v in a.get('voci') or []:
+        if isinstance(v, str):
+            v = {'descrizione': v}
+        q = _num(v.get('quantita', v.get('quantità', 1))) or 1
+        pr = _num(v.get('prezzo', v.get('prezzo_unitario', 0)))
+        tot = q * pr
+        imponibile += tot
+        qs = ('%g' % q).replace('.', ',')
+        rows.append('| %s | %s | %s | %s |' % ((v.get('descrizione') or '').replace('|', '/'), qs, _eur(pr), _eur(tot)))
+    imposta = imponibile * iva / 100
+    L = []
+    if azienda:
+        lines = [x.strip() for x in re.split(r'\n|,\s*(?=(?:via|viale|piazza|corso|p\.?\s?iva|tel|email|e-mail)\b)', azienda, flags=re.I) if x.strip()]
+        L.append('**%s**' % lines[0])
+        L += lines[1:]
+        L.append('')
+    L.append('# Preventivo n. %s' % numero)
+    L.append('Data: **%s**' % data)
+    L.append('')
+    if cliente:
+        L.append('Spett.le **%s**' % cliente.replace('\n', '**\n**'))
+    if oggetto:
+        L.append('Oggetto: **%s**' % oggetto)
+    L.append('')
+    if rows:
+        L.append('| Descrizione | Q.tà | Prezzo unitario | Importo |')
+        L.append('|---|---|---|---|')
+        L += rows
+        L.append('| | | Imponibile | %s |' % _eur(imponibile))
+        if iva:
+            L.append('| | | IVA %s%% | %s |' % (('%g' % iva).replace('.', ','), _eur(imposta)))
+        L.append('| | | **Totale** | **%s** |' % _eur(imponibile + imposta))
+        L.append('')
+    note = (a.get('note') or '').strip()
+    if note:
+        L.append('## Note')
+        L += [('- ' + x.lstrip('-• ').strip()) for x in note.split('\n') if x.strip()]
+        L.append('')
+    L.append('## Condizioni')
+    L.append('- Pagamento: %s' % ((a.get('pagamento') or '').strip() or 'da concordare'))
+    L.append('- Validità dell’offerta: %s' % ((a.get('validita') or '').strip() or '30 giorni dalla data del preventivo'))
+    L.append('')
+    L.append('')
+    L.append('Per accettazione ______________________________')
+    title = 'Preventivo %s' % numero.replace('/', '-')
+    if cliente:
+        title += ' - ' + cliente.split('\n')[0]
+    r = doc_create({'title': title, 'text': '\n'.join(L)})
+    if r.get('ok'):
+        try:
+            os.makedirs(os.path.dirname(conf_p), exist_ok=True)
+            json.dump(conf, open(conf_p, 'w'), ensure_ascii=False)
+        except OSError:
+            pass
+        r['totale'] = _eur(imponibile + imposta)
+    return r
 
 
 def sys_bootwhy(_):
@@ -863,7 +1082,7 @@ def sys_bootwhy(_):
     return {'total': total.splitlines()[0] if total else '', 'slow': items,
             'chain': [l.strip() for l in chain.splitlines()[2:14]]}
 
-CMDS = {'sys.bootwhy': sys_bootwhy, 'doc.create': doc_create, 'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
+CMDS = {'sys.bootwhy': sys_bootwhy, 'doc.create': doc_create, 'doc.preventivo': doc_preventivo, 'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
         'net.diag': net_diag, 'audio.get': audio_get, 'audio.set': audio_set, 'bright.get': bright_get,
         'bright.set': bright_set, 'power': power, 'sys.info': sys_info, 'fs.roots': fs_roots,
         'fs.mount': fs_mount, 'fs.list': fs_list, 'fs.read': fs_read,

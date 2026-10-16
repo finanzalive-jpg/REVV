@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 import urllib.parse
 
 # La libreria che aggancia barra e sfondo ai bordi dello schermo deve essere caricata
@@ -270,6 +271,7 @@ class Rise(Gtk.Application):
                     if t['app_id'] in a['app_ids'] or t['app_id'].lower().startswith(a['id']):
                         t['native'] = a['id']
             out.append(t)
+        self.last_tops = out
         self.js('panel', 'window.__riseToplevels && window.__riseToplevels(%s)' % json.dumps(out))
         return False
 
@@ -467,7 +469,54 @@ class Rise(Gtk.Application):
         nid = a.get('app') or table.get(ext)
         if not nid:
             return {'ok': False}
-        return self.native_open({'id': nid, 'path': path})
+        app = next((n for n in self.all_native() if n['id'] == nid), None)
+        if not app or not shutil.which(app['cmd'][0]):
+            return {'ok': False}
+        # Si avvia il programma e si controlla che apra davvero una finestra: se si chiude subito
+        # o non si fa vedere entro qualche secondo, il file si apre nel Visualizzatore di Rise.
+        # Così un doppio clic apre sempre qualcosa.
+        before = {t.get('id') for t in getattr(self, 'last_tops', []) if t.get('native') == nid}
+        env = dict(os.environ)
+        env.pop('LD_PRELOAD', None)
+        try:
+            proc = subprocess.Popen(list(app['cmd']) + [path], start_new_session=True, env=env,
+                                    stdout=subprocess.DEVNULL, stderr=open('/tmp/rise-apri.log', 'a'))
+        except OSError:
+            return {'ok': False}
+        if nid in ('player', 'browser'):
+            return {'ok': True}
+        t0 = time.time()
+
+        def check():
+            tops = getattr(self, 'last_tops', [])
+            if self.toplevels and any(t.get('native') == nid and t.get('id') not in before for t in tops):
+                return False                      # la finestra del programma è comparsa
+            alive = proc.poll() is None
+            if alive and time.time() - t0 < 12:
+                return True                       # si aspetta ancora un po'
+            if alive and not self.toplevels:
+                return False                      # non si può sapere: si lascia fare al programma
+            if alive:                             # vivo ma senza finestra: si lascia perdere
+                try:
+                    os.killpg(proc.pid, 15)
+                except OSError:
+                    pass
+            self.open_in_viewer(path)
+            return False
+        GLib.timeout_add(400, check)
+        return {'ok': True}
+
+    def open_in_viewer(self, path):
+        try:
+            st = os.stat(path)
+        except OSError:
+            return
+        goto = {'native': True, 'path': path, 'name': os.path.basename(path), 'size': st.st_size,
+                'lastModified': int(st.st_mtime * 1000)}
+        if self.multi:
+            self.app_open({'id': 'viewer', 'title': 'Visualizzatore', 'w': 914, 'h': 648, 'goto': goto})
+        else:
+            self.broadcast("window.openApp && window.openApp('viewer', {goto: %s})" % json.dumps(goto))
 
     def info(self, _a, name):
         return {'multi': self.multi, 'toplevels': bool(self.toplevels), 'role': name}
