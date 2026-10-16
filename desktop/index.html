@@ -361,6 +361,7 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .ai-dots{display:inline-flex;gap:4px;vertical-align:middle}.ai-dots i{width:7px;height:7px;border-radius:50%;background:var(--accent);opacity:.3;animation:aidot 1.2s infinite ease-in-out}.ai-dots i:nth-child(2){animation-delay:.2s}.ai-dots i:nth-child(3){animation-delay:.4s}
 @keyframes aidot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
 .ai-phase{color:var(--ink-soft);display:inline-flex;align-items:center;gap:6px}.ai-live{margin-top:6px;padding:8px 10px;background:#f6f9fc;border:1px dashed var(--line);border-radius:6px;font-size:.92em;max-height:260px;overflow:auto}
+.ai-usb{margin:12px 0;padding:12px 14px;border:1px solid #9cc3f0;background:#eef6ff;border-radius:8px}.ai-usb p{margin:4px 0 10px;font-size:.92em}
 .ai-mic{display:inline-grid;place-items:center;min-width:42px}.ai-mic.rec{background:#d83a3a;color:#fff;border-color:#b52626;animation:airec 1.2s infinite}
 @keyframes airec{50%{box-shadow:0 0 0 6px rgba(216,58,58,.25)}}
 .ai-voice{font:inherit;font-size:.9em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -1370,12 +1371,15 @@ function renderAssistant(b){
       <p class="ai-step">Per cominciare scarica il “cervello” dell'Assistente (si fa una volta sola). Più è grande, più è bravo, ma serve più memoria. Questo computer ha ${String(ST.ramGb).replace('.',',')} GB.</p>
       <div class="ai-models">${rows}</div>
       <p class="note">Scaricare è lento? Scarica il file .gguf dal tuo PC e mandalo a questo computer con Rise Drop (app LocalSend sul PC): l'Assistente lo trova e lo sistema da solo.</p>
+      ${ST.live&&!ST.onUsb&&ST.usbFree?`<div class="ai-usb"><b>Salva i modelli sulla chiavetta di Rise</b><p>Sulla chiavetta ci sono ${String(ST.usbFree).replace('.',',')} GB liberi che Rise non usa. Se vuoi, li preparo per salvarci i modelli: così non occupano la memoria del computer e restano anche dopo lo spegnimento. Rise e i suoi file non vengono toccati.</p><button class="btn primary" data-prep>Usa lo spazio libero della chiavetta</button></div>`:''}
       ${ST.live?(ST.onUsb?'<p class="note">Stai usando Rise dalla chiavetta: i modelli si salvano sulla chiavetta (cartella “rise-dati”), così li scarichi una volta sola.</p>':'<p class="note">Stai usando Rise dalla chiavetta: questa chiavetta è di sola lettura, quindi il modello resta finché non spegni il computer.</p>'):''}
       <p class="note">Modelli Qwen3.5 (Alibaba, licenza Apache 2.0) · motore llama.cpp (MIT).</p></div>`;
     $$('[data-dl]',body).forEach(x=>x.onclick=async()=>{const r=await SYS.call('ai.download',{model:x.dataset.dl});if(!r.ok){toast(r.message,true);return}await refresh();setup()});
     $$('[data-cancel]',body).forEach(x=>x.onclick=async()=>{await SYS.call('ai.cancel',{model:x.dataset.cancel});setTimeout(async()=>{await refresh();setup()},600)});
     $$('[data-del]',body).forEach(x=>x.onclick=async()=>{await SYS.call('ai.delete',{model:x.dataset.del});await refresh();setup()});
     $$('[data-use]',body).forEach(x=>x.onclick=()=>startModel(x.dataset.use));
+    $$('[data-prep]',body).forEach(x=>x.onclick=async()=>{x.disabled=true;x.textContent='Preparo la chiavetta… (qualche secondo)';let r;try{r=await SYS.call('ai.prepareUsb')}catch(e){r={ok:false,message:e.message}}
+      toast(r.ok?'Fatto! Da adesso i modelli si salvano sulla chiavetta.':(r.message||'Non ci sono riuscito.'),!r.ok);await refresh();setup()});
     {const busyDl=ST.models.some(m=>m.downloading);poll=setInterval(async()=>{if(!b.isConnected){stopPoll();return}const was=ST.models.filter(m=>m.have).length;await refresh();
       if(!ST.models.some(m=>m.downloading)){stopPoll();const now=ST.models.filter(m=>m.have);if(now.length>was){startModel(now.find(m=>m.id===ST.recommended)?ST.recommended:now[now.length-1].id);return}}setup()},busyDl?1000:5000)}}
   async function startModel(id){stopPoll();

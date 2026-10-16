@@ -64,7 +64,9 @@ def _usb_root():
                 mnt = '/media/rise-dati'
                 if not os.path.ismount(mnt):
                     _run(['sudo', '-n', 'mkdir', '-p', mnt])
-                    _run(['sudo', '-n', 'mount', dev, mnt])
+                    rc, fs = _run(['blkid', '-o', 'value', '-s', 'TYPE', dev])
+                    opts = ['-o', 'uid=%d,gid=%d' % (os.getuid(), os.getgid())] if fs in ('exfat', 'vfat', 'ntfs') else []
+                    _run(['sudo', '-n', 'mount'] + opts + [dev, mnt])
                 if os.path.ismount(mnt):
                     d = os.path.join(mnt, 'rise-dati')
                     u = pwd.getpwuid(os.getuid()).pw_name
@@ -74,6 +76,76 @@ def _usb_root():
                     break
     _cache['root'] = root
     return root
+
+
+def _boot_disk():
+    """Il disco (chiavetta) da cui è partito Rise, se è una chiavetta USB scritta "a immagine"."""
+    m = _mount_of(MEDIUM)
+    if not m or not m[0].startswith('/dev/'):
+        return None
+    rc, pk = _run(['lsblk', '-no', 'PKNAME', m[0]])
+    disk = '/dev/' + pk.splitlines()[0].strip() if rc == 0 and pk.strip() else m[0]
+    rc, tran = _run(['lsblk', '-dno', 'TRAN', disk])
+    if tran.strip() != 'usb':
+        return None
+    return disk
+
+
+def usb_free_gb():
+    """Spazio libero (non usato da nessuna partizione) sulla chiavetta di Rise, in GB. 0 se non si può usare."""
+    if 'free' in _cache:
+        return _cache['free']
+    _cache['free'] = 0
+    if not live() or _usb_root():
+        return 0
+    disk = _boot_disk()
+    if not disk:
+        return 0
+    import json as _j
+    rc, out = _run(['sudo', '-n', 'sfdisk', '-J', disk])
+    rc2, size = _run(['blockdev', '--getsize64', disk])
+    if rc2 != 0:
+        rc2, size = _run(['sudo', '-n', 'blockdev', '--getsize64', disk])
+    try:
+        t = _j.loads(out)['partitiontable']
+        end = max(p['start'] + p['size'] for p in t['partitions']) * t.get('sectorsize', 512)
+        free = (int(size) - end) / 1e9
+    except Exception:
+        return 0
+    _cache['free'] = round(free, 1) if free > 2 else 0
+    return _cache['free']
+
+
+def prepare_usb():
+    """Crea nello spazio libero della chiavetta una partizione "RISE-DATI" (exFAT, leggibile anche da Windows)
+    dove salvare modelli e voci. Le partizioni di Rise non vengono toccate."""
+    disk = _boot_disk()
+    _cache.pop('free', None)
+    if not disk or not usb_free_gb():
+        return {'ok': False, 'message': 'Su questa chiavetta non c’è spazio libero da usare.'}
+    rc, before = _run(['lsblk', '-lnpo', 'NAME', disk])
+    p = subprocess.run(['sudo', '-n', 'sfdisk', '--append', '--no-reread', '--no-tell-kernel', disk],
+                       input=',,EBD0A0A2-B9E5-4433-87C0-68B6B72699C7\n', capture_output=True, text=True, timeout=60)
+    if p.returncode != 0:
+        # tabelle MBR semplici: tipo "7" (exFAT/NTFS)
+        p = subprocess.run(['sudo', '-n', 'sfdisk', '--append', '--no-reread', '--no-tell-kernel', disk],
+                           input=',,7\n', capture_output=True, text=True, timeout=60)
+        if p.returncode != 0:
+            return {'ok': False, 'message': 'Non riesco a preparare la chiavetta. (%s)' % (p.stderr.strip()[-200:])}
+    _run(['sudo', '-n', 'partx', '-a', disk])
+    _run(['sudo', '-n', 'udevadm', 'settle'], timeout=30)
+    rc, after = _run(['lsblk', '-lnpo', 'NAME', disk])
+    new = [d for d in after.split() if d not in before.split()]
+    if not new:
+        return {'ok': False, 'message': 'La chiavetta è pronta, ma serve riavviare il computer per usarla.'}
+    dev = new[-1]
+    rc, _ = _run(['sudo', '-n', 'mkfs.exfat', '-L', 'RISE-DATI', dev], timeout=600)
+    if rc != 0:
+        rc, _ = _run(['sudo', '-n', 'mkfs.ext4', '-F', '-L', 'RISE-DATI', dev], timeout=600)
+    if rc != 0:
+        return {'ok': False, 'message': 'Non riesco a formattare lo spazio della chiavetta.'}
+    _cache.clear()
+    return {'ok': bool(_usb_root()), 'message': '' if _usb_root() else 'Fatto: riavvia il computer per usarlo.'}
 
 
 def data_dir(sub):

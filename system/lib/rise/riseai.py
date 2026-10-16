@@ -118,8 +118,13 @@ def _import(mid, src):
             st['done'] = total
             risestore.sync()
             return
+        free = shutil.disk_usage(_dir()).free
+        if free < total + 5e8:
+            raise IOError('non c’è abbastanza spazio (servono %.1f GB, liberi %.1f GB)' % (total / 1e9, free / 1e9))
         with open(src, 'rb') as i, risestore.open_write(part) as o:
             while True:
+                if st.get('cancel'):
+                    raise InterruptedError('annullato')
                 buf = i.read(4 << 20)
                 if not buf:
                     break
@@ -132,9 +137,13 @@ def _import(mid, src):
                 os.remove(src)
             except OSError:
                 pass
+    except InterruptedError:
+        risestore.remove(part)
+        _skip.add(mid)                       # annullato: non lo si ricopia finché non si rimette la chiavetta
     except Exception as e:
         risestore.remove(part)
-        st['error'] = 'Non riesco a copiare il modello. (%s)' % e
+        _skip.add(mid)
+        st['error'] = 'Non riesco a copiare il modello: %s' % e
     finally:
         st['running'] = False
         st.pop('phase', None)
@@ -157,19 +166,31 @@ def _mount_sticks():
         pass
 
 
+_skip = set()
+_skip_src = {}
+
+
 def _check_imports():
     if not all(_model_file(m) for m in MODELS):
         _mount_sticks()
-    for mid in MODELS:
-        if _model_file(mid) or (_dl.get(mid) or {}).get('running'):
+    if any((d or {}).get('running') for d in _dl.values()):
+        return                               # una copia alla volta
+    for mid in ('9b', '4b', '2b', '0.8b'):   # prima il modello più bravo che questo computer regge
+        if _model_file(mid) or MODELS[mid][4] > _mem_gb() + 0.5:
             continue
         src = _elsewhere(mid)
+        if not src:
+            _skip.discard(mid)               # chiavetta tolta: alla prossima si riprova
+            continue
+        if mid in _skip:
+            continue
         if src:
             with _lock:
                 if (_dl.get(mid) or {}).get('running'):
                     continue
                 _dl[mid] = {'running': True, 'done': 0, 'total': 0, 'error': None, 'cancel': False}
             threading.Thread(target=_import, args=(mid, src), daemon=True).start()
+            return
 
 
 def _splitter():
@@ -228,7 +249,7 @@ def status(_=None):
     running = bool(proc and proc.poll() is None)
     return {'engine': bool(_engine()), 'models': models, 'recommended': recommended(),
             'ramGb': round(_mem_gb(), 1), 'live': _live(), 'running': running,
-            'onUsb': risestore.data_dir('models')[1],
+            'onUsb': risestore.data_dir('models')[1], 'usbFree': risestore.usb_free_gb(),
             'model': _srv['model'] if running else None, 'port': PORT}
 
 
@@ -430,5 +451,9 @@ def stop(_=None):
     return {'ok': True}
 
 
-CMDS = {'ai.status': status, 'ai.download': download, 'ai.cancel': cancel, 'ai.delete': delete,
+def prepare_usb(_=None):
+    return risestore.prepare_usb()
+
+
+CMDS = {'ai.prepareUsb': prepare_usb, 'ai.status': status, 'ai.download': download, 'ai.cancel': cancel, 'ai.delete': delete,
         'ai.start': start, 'ai.stop': stop}
