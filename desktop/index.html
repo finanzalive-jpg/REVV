@@ -1364,19 +1364,20 @@ function renderAssistant(b){
     const rows=ST.models.map(m=>{const rec=m.id===ST.recommended,pct=m.total?Math.round(m.done/m.total*100):0;
       return `<div class="ai-model${rec?' rec':''}" data-m="${m.id}"><div><b>${esc(m.name)}${rec?' <span class="tag">Consigliato per questo PC</span>':''}</b>
         <small>Scarica circa ${String(m.gb).replace('.',',')} GB · adatto a PC con ${m.ram} GB di memoria o più${m.error?` · <span class="err">${esc(m.error)}</span>`:''}</small>
-        ${m.downloading?`<div class="meter"><i style="width:${pct}%"></i></div><small>${m.phase==='split'?'Lo salvo sulla chiavetta in più pezzi (ci vuole qualche minuto)…':m.total?fmt(m.done)+' di '+fmt(m.total)+' · '+pct+'%':'Mi collego…'}</small>`:''}</div>
+        ${m.downloading?`<div class="meter"><i style="width:${pct}%"></i></div><small>${m.phase==='split'?'Lo salvo sulla chiavetta in più pezzi (ci vuole qualche minuto)…':m.phase==='import'?'Ho trovato il file che hai mandato: lo copio al suo posto… '+pct+'%':m.total?fmt(m.done)+' di '+fmt(m.total)+' · '+pct+'%':'Mi collego…'}</small>`:''}</div>
         <div>${m.have?`<button class="btn primary" data-use="${m.id}">Usa</button> <button class="btn" data-del="${m.id}">Elimina</button>`:m.downloading?`<button class="btn" data-cancel="${m.id}">Annulla</button>`:`<button class="btn${rec?' primary':''}" data-dl="${m.id}">Scarica</button>`}</div></div>`}).join('');
     body.innerHTML=`<div class="ai-setup"><div class="ai-hero">${I('assistant',56)}<div><h2>Assistente</h2><p class="lead">Fai domande, scrivi lettere e preventivi, cerca su internet, apri programmi, parlagli a voce. Il cervello gira sul tuo computer: i tuoi dati non vanno a nessuno.</p></div></div>
       <p class="ai-step">Per cominciare scarica il “cervello” dell'Assistente (si fa una volta sola). Più è grande, più è bravo, ma serve più memoria. Questo computer ha ${String(ST.ramGb).replace('.',',')} GB.</p>
       <div class="ai-models">${rows}</div>
+      <p class="note">Scaricare è lento? Scarica il file .gguf dal tuo PC e mandalo a questo computer con Rise Drop (app LocalSend sul PC): l'Assistente lo trova e lo sistema da solo.</p>
       ${ST.live?(ST.onUsb?'<p class="note">Stai usando Rise dalla chiavetta: i modelli si salvano sulla chiavetta (cartella “rise-dati”), così li scarichi una volta sola.</p>':'<p class="note">Stai usando Rise dalla chiavetta: questa chiavetta è di sola lettura, quindi il modello resta finché non spegni il computer.</p>'):''}
       <p class="note">Modelli Qwen3.5 (Alibaba, licenza Apache 2.0) · motore llama.cpp (MIT).</p></div>`;
     $$('[data-dl]',body).forEach(x=>x.onclick=async()=>{const r=await SYS.call('ai.download',{model:x.dataset.dl});if(!r.ok){toast(r.message,true);return}await refresh();setup()});
     $$('[data-cancel]',body).forEach(x=>x.onclick=async()=>{await SYS.call('ai.cancel',{model:x.dataset.cancel});setTimeout(async()=>{await refresh();setup()},600)});
     $$('[data-del]',body).forEach(x=>x.onclick=async()=>{await SYS.call('ai.delete',{model:x.dataset.del});await refresh();setup()});
     $$('[data-use]',body).forEach(x=>x.onclick=()=>startModel(x.dataset.use));
-    if(ST.models.some(m=>m.downloading))poll=setInterval(async()=>{if(!b.isConnected){stopPoll();return}const was=ST.models.filter(m=>m.have).length;await refresh();
-      if(!ST.models.some(m=>m.downloading)){stopPoll();const now=ST.models.filter(m=>m.have);if(now.length>was){startModel(now.find(m=>m.id===ST.recommended)?ST.recommended:now[now.length-1].id);return}}setup()},1000)}
+    {const busyDl=ST.models.some(m=>m.downloading);poll=setInterval(async()=>{if(!b.isConnected){stopPoll();return}const was=ST.models.filter(m=>m.have).length;await refresh();
+      if(!ST.models.some(m=>m.downloading)){stopPoll();const now=ST.models.filter(m=>m.have);if(now.length>was){startModel(now.find(m=>m.id===ST.recommended)?ST.recommended:now[now.length-1].id);return}}setup()},busyDl?1000:5000)}}
   async function startModel(id){stopPoll();
     body.innerHTML=`<div class="ai-setup ai-wait">${I('assistant',56)}<p><span class="st run"></span> Sto svegliando l'Assistente… (la prima volta ci vuole qualche secondo)</p></div>`;
     let r;try{r=await SYS.call('ai.start',{model:id})}catch(e){r={ok:false,message:e.message}}

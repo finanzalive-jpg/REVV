@@ -74,6 +74,71 @@ def _model_file(mid):
     return p if os.path.exists(p) else _split_first(mid)
 
 
+def _elsewhere(mid):
+    """Il file del modello arrivato in altro modo: mandato con Rise Drop/LocalSend, su un'altra chiavetta, ecc."""
+    import glob
+    name = MODELS[mid][2].lower()
+    places = [os.path.join(HOME, d) for d in ('Download', 'Downloads', 'Scaricati', 'Scrivania', 'Desktop', 'Documenti')]
+    places += glob.glob('/media/*') + glob.glob('/media/*/*') + glob.glob('/mnt/*')
+    for d in places:
+        for sub in ('', 'rise-dati/models', 'models'):
+            dd = os.path.join(d, sub)
+            try:
+                for f in os.listdir(dd):
+                    if f.lower() == name:
+                        p = os.path.join(dd, f)
+                        if os.path.dirname(os.path.abspath(p)) != os.path.abspath(_dir()):
+                            return p
+            except OSError:
+                pass
+    return None
+
+
+def _import(mid, src):
+    """Copia il modello dove Rise lo tiene (sulla chiavetta, se si usa Rise dalla chiavetta)."""
+    st = _dl[mid]
+    dst = _path(mid)
+    part = dst + '.part'
+    try:
+        total = os.path.getsize(src)
+        st.update(done=0, total=total, phase='import')
+        if risestore.too_big(_dir(), total):
+            raise IOError('il file è più grande di 4 GB e non entra su una chiavetta FAT32')
+        with open(src, 'rb') as i, risestore.open_write(part) as o:
+            while True:
+                buf = i.read(4 << 20)
+                if not buf:
+                    break
+                o.write(buf)
+                st['done'] += len(buf)
+        risestore.replace(part, dst)
+        risestore.sync()
+        if src.startswith(HOME + os.sep):        # era nella memoria del computer: si libera spazio
+            try:
+                os.remove(src)
+            except OSError:
+                pass
+    except Exception as e:
+        risestore.remove(part)
+        st['error'] = 'Non riesco a copiare il modello. (%s)' % e
+    finally:
+        st['running'] = False
+        st.pop('phase', None)
+
+
+def _check_imports():
+    for mid in MODELS:
+        if _model_file(mid) or (_dl.get(mid) or {}).get('running'):
+            continue
+        src = _elsewhere(mid)
+        if src:
+            with _lock:
+                if (_dl.get(mid) or {}).get('running'):
+                    continue
+                _dl[mid] = {'running': True, 'done': 0, 'total': 0, 'error': None, 'cancel': False}
+            threading.Thread(target=_import, args=(mid, src), daemon=True).start()
+
+
 def _splitter():
     for n in ('llama-gguf-split', '/opt/llama/llama-gguf-split', '/usr/libexec/llama.cpp/llama-gguf-split'):
         p = shutil.which(n) or (n if os.path.isfile(n) and os.access(n, os.X_OK) else None)
@@ -118,6 +183,7 @@ def recommended():
 
 
 def status(_=None):
+    _check_imports()
     models = []
     for mid, (name, repo, f, gb, ram) in MODELS.items():
         p = _path(mid)
