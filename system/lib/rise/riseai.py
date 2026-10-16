@@ -249,7 +249,7 @@ def status(_=None):
     running = bool(proc and proc.poll() is None)
     return {'engine': bool(_engine()), 'models': models, 'recommended': recommended(),
             'ramGb': round(_mem_gb(), 1), 'live': _live(), 'running': running,
-            'onUsb': risestore.data_dir('models')[1], 'usbFree': risestore.usb_free_gb(),
+            'gpu': _gpu_ok(), 'onUsb': risestore.data_dir('models')[1], 'usbFree': risestore.usb_free_gb(),
             'model': _srv['model'] if running else None, 'port': PORT}
 
 
@@ -376,6 +376,18 @@ def _healthy(timeout=1.0):
         return False
 
 
+def _gpu_ok():
+    if os.environ.get('RISE_SAFE_GPU') == '1' or os.path.exists(os.path.expanduser('~/.config/rise/ai-cpu-only')):
+        return False
+    return bool(glob_any(['/usr/lib/*/ggml/*/libggml-vulkan*', '/usr/lib/*/ggml/*vulkan*', '/usr/lib/*/libggml-vulkan*', '/usr/lib/*/ggml*/libggml-vulkan*',
+                          '/opt/llama/libggml-vulkan*']))
+
+
+def glob_any(patterns):
+    import glob
+    return any(glob.glob(p) for p in patterns)
+
+
 def start(a):
     mid = a.get('model') or recommended()
     if mid not in MODELS or not _model_file(mid):
@@ -396,6 +408,10 @@ def start(a):
                '-c', ctx, '-t', str(threads), '--jinja',
                '--temp', '0.6', '--top-p', '0.95', '--top-k', '20', '--min-p', '0',
                '--presence-penalty', '1.5', '--no-webui', '--cache-reuse', '256']
+        # Scheda video: con i chip recenti (Intel Iris/UHD dal 2015, AMD, NVIDIA) llama.cpp usa Vulkan e
+        # legge le domande molte volte più in fretta. Sulle schede Intel vecchie (RISE_SAFE_GPU) solo processore.
+        if _gpu_ok():
+            cmd += ['-ngl', '99']
         log = open('/tmp/rise-assistente.log', 'w')
         env = dict(os.environ)
         env.pop('LD_PRELOAD', None)
@@ -409,19 +425,26 @@ def start(a):
                 tail = open('/tmp/rise-assistente.log').read()[-300:]
             except OSError:
                 pass
-            if 'unknown argument' in tail or 'invalid argument' in tail:
+            if 'unknown argument' in tail or 'invalid argument' in tail or _gpu_ok():
+                if _gpu_ok():
+                    try:
+                        os.makedirs(os.path.expanduser('~/.config/rise'), exist_ok=True)
+                        open(os.path.expanduser('~/.config/rise/ai-cpu-only'), 'w').write('la scheda video non ha funzionato\n')
+                    except OSError:
+                        pass
                 return _start_plain(eng, mid)
             last = tail.strip().splitlines()[-1] if tail.strip() else ''
             return {'ok': False, 'message': ('L’Assistente non è partito. ' + last).strip()}
         if _healthy():
-            return {'ok': True, 'port': PORT}
+            return {'ok': True, 'port': PORT, 'gpu': _gpu_ok()}
         time.sleep(0.5)
     return {'ok': False, 'message': 'L’Assistente ci mette troppo a partire.'}
 
 
 def _start_plain(eng, mid):
     """Versioni di llama-server che non conoscono qualche opzione: si riparte con quelle essenziali."""
-    cmd = [eng, '-m', _model_file(mid), '--host', '127.0.0.1', '--port', str(PORT), '-c', '4096', '--jinja']
+    cmd = [eng, '-m', _model_file(mid), '--host', '127.0.0.1', '--port', str(PORT), '-c', '8192', '--jinja',
+           '-t', str(_physical_cores()), '-ngl', '0']
     log = open('/tmp/rise-assistente.log', 'a')
     env = dict(os.environ)
     env.pop('LD_PRELOAD', None)

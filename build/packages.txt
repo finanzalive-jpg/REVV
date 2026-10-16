@@ -7,7 +7,7 @@ pipewire pipewire-pulse wireplumber dbus-user-session
 libgl1-mesa-dri mesa-vulkan-drivers libegl-mesa0
 fonts-noto-core fonts-dejavu-core fonts-noto-color-emoji fonts-liberation fonts-croscore fonts-noto-mono adwaita-icon-theme
 brightnessctl ubuntu-drivers-common pciutils usbutils
-iputils-ping iproute2 systemd-timesyncd llama.cpp-tools whisper.cpp alsa-utils python3-venv fdisk exfatprogs file pci.ids usb.ids
+iputils-ping iproute2 systemd-timesyncd llama.cpp-tools libggml0-backend-vulkan whisper.cpp alsa-utils python3-venv fdisk exfatprogs file pci.ids usb.ids
 labwc libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0 python3-pywayland wlrctl grim
 epiphany-browser mpv plocate
 plymouth plymouth-label systemd-zram-generator libglib2.0-bin openssl
