@@ -791,7 +791,65 @@ def register_apps(pkg):
     json.dump(apps, open(APPS_FILE, 'w'))
     return found
 
-CMDS = {'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
+
+# ---------------- Documenti Word (.docx) creati dall'Assistente ----------------
+def _docx_xml(text):
+    from xml.sax.saxutils import escape
+    out = []
+    for line in text.replace('\r', '').split('\n'):
+        l = line.rstrip()
+        size, bold = None, False
+        if l.startswith('### '):
+            l, size, bold = l[4:], 26, True
+        elif l.startswith('## '):
+            l, size, bold = l[3:], 30, True
+        elif l.startswith('# '):
+            l, size, bold = l[2:], 36, True
+        elif l.startswith(('- ', '* ')):
+            l = '• ' + l[2:]
+        runs = []
+        parts = re.split(r'(\*\*[^*]+\*\*)', l)
+        for part in parts:
+            if not part:
+                continue
+            b = bold or (part.startswith('**') and part.endswith('**'))
+            t = part[2:-2] if part.startswith('**') and part.endswith('**') else part
+            rpr = ('<w:b/>' if b else '') + ('<w:sz w:val="%d"/>' % size if size else '')
+            runs.append('<w:r>%s<w:t xml:space="preserve">%s</w:t></w:r>' % ('<w:rPr>%s</w:rPr>' % rpr if rpr else '', escape(t)))
+        out.append('<w:p>%s</w:p>' % ''.join(runs))
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+            + ''.join(out) +
+            '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>'
+            '</w:body></w:document>')
+
+
+def doc_create(a):
+    import zipfile
+    title = re.sub(r'[\\/:*?"<>|\n]+', ' ', (a.get('title') or 'Documento').strip())[:80] or 'Documento'
+    folder = next((os.path.join(HOME, d) for d in ('Documenti', 'Documents') if os.path.isdir(os.path.join(HOME, d))), HOME)
+    path = os.path.join(folder, title + '.docx')
+    n = 2
+    while os.path.exists(path):
+        path = os.path.join(folder, '%s (%d).docx' % (title, n))
+        n += 1
+    ct = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+          '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+          '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+          '<Default Extension="xml" ContentType="application/xml"/>'
+          '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+          '</Types>')
+    rels = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            '</Relationships>')
+    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as z:
+        z.writestr('[Content_Types].xml', ct)
+        z.writestr('_rels/.rels', rels)
+        z.writestr('word/document.xml', _docx_xml(a.get('text') or ''))
+    return {'ok': True, 'path': path, 'name': os.path.basename(path)}
+
+CMDS = {'doc.create': doc_create, 'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
         'net.diag': net_diag, 'audio.get': audio_get, 'audio.set': audio_set, 'bright.get': bright_get,
         'bright.set': bright_set, 'power': power, 'sys.info': sys_info, 'fs.roots': fs_roots,
         'fs.mount': fs_mount, 'fs.list': fs_list, 'fs.read': fs_read,
@@ -801,3 +859,11 @@ CMDS = {'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'ne
         'net.hosts': net_hosts, 'net.shares': net_shares, 'net.mount': net_mount,
         'share.list': share_list, 'share.add': share_add, 'share.remove': share_remove}
 
+
+
+# Assistente (intelligenza artificiale sul computer)
+try:
+    import riseai
+    CMDS.update(riseai.CMDS)
+except Exception:  # senza il modulo l'Assistente risulta semplicemente non disponibile
+    pass

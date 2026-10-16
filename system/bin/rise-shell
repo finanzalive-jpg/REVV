@@ -295,6 +295,8 @@ class Rise(Gtk.Application):
         def gone(*_):
             self.windows.pop(key, None)
             self.views.pop(key, None)
+            if aid == 'assistant':   # chiusa l'Assistente: si libera subito la memoria del modello
+                threading.Thread(target=lambda: risesys.CMDS.get('ai.stop', lambda _: None)({}), daemon=True).start()
             return False
         w.connect('close-request', gone)
         w.present()

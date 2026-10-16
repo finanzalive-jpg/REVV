@@ -70,6 +70,28 @@ for app in wordcraft gridcraft deckcraft; do
 done
 rm -rf "$CH/tmp/craft"
 
+log "3c/9 Motore dell'Assistente (llama.cpp)"
+if chroot "$CH" sh -c 'command -v llama-server' >/dev/null 2>&1; then
+  echo "llama-server: $(chroot "$CH" sh -c 'command -v llama-server')"
+else
+  # riserva: versione ufficiale per Linux x64 (CPU) dal progetto llama.cpp
+  url="$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/ggml-org/llama.cpp/releases/latest 2>/dev/null \
+    | python3 -c 'import json,sys,re; d=json.load(sys.stdin); print(next((a["browser_download_url"] for a in d.get("assets",[]) if re.search(r"bin-ubuntu-x64\.(zip|tar\.gz)$", a["name"])), ""))' 2>/dev/null || true)"
+  if [ -n "$url" ]; then
+    mkdir -p "$CH/opt/llama" /tmp/llama-dl && curl -fsSL -o /tmp/llama-dl/pkg "$url"
+    case "$url" in *.zip) (cd /tmp/llama-dl && python3 -c 'import zipfile;zipfile.ZipFile("pkg").extractall("x")');; *) mkdir -p /tmp/llama-dl/x && tar xzf /tmp/llama-dl/pkg -C /tmp/llama-dl/x;; esac
+    d="$(dirname "$(find /tmp/llama-dl/x -name llama-server -type f | head -1)")"
+    if [ -n "$d" ] && [ -d "$d" ]; then
+      cp -a "$d"/. "$CH/opt/llama/"
+      printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/llama${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\nexec /opt/llama/llama-server "$@"\n' > "$CH/usr/local/bin/llama-server"
+      chmod +x "$CH/usr/local/bin/llama-server"; echo "llama-server: versione ufficiale da $url"
+    fi
+    rm -rf /tmp/llama-dl
+  else
+    echo "ATTENZIONE: llama-server non disponibile, l'Assistente non funzionerà"
+  fi
+fi
+
 log "4/9 Desktop di Rise (offline: caratteri e lettori di file inclusi)"
 D="$CH/opt/rise"; mkdir -p "$D/fonts" "$D/lib"
 NPM="$WORK/npm"; mkdir -p "$NPM"
