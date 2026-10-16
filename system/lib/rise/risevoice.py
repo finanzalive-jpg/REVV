@@ -99,7 +99,7 @@ def status(_=None):
             'voices': {k: {'name': KOKORO_NAMES[k] if kk else v[0], 'ready': _have_voice(k),
                            'mb': sum(m for f, m in KOKORO_FILES if not os.path.exists(os.path.join(DIR, f))) if kk else v[3]}
                        for k, v in VOICES.items()},
-            'sttMb': STT[_stt_id()][2], 'download': dict(_dl), 'recording': bool(_rec['proc'] and _rec['proc'].poll() is None), 'autoStopped': bool(_rec.get('auto'))}
+            'sttMb': STT[_stt_id()][2], 'download': dict(_dl), 'recording': bool(_rec['proc'] and _rec['proc'].poll() is None), 'autoStopped': bool(_rec.get('auto')), 'level': round(_rec.get('level', 0), 3)}
 
 
 # ---------- scaricamento dei modelli ----------
@@ -170,6 +170,8 @@ def listen_start(_=None):
     _rec['proc'] = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     _rec['start'] = time.time()
     _rec['auto'] = False
+    _rec['level'] = 0
+    _rec['peak'] = 0
     threading.Thread(target=_watch_silence, args=(_rec['proc'],), daemon=True).start()
     return {'ok': True}
 
@@ -193,6 +195,8 @@ def _watch_silence(proc):
             pos += step
             a = array.array('h', chunk)
             rms = math.sqrt(sum(x * x for x in a[::4]) / max(1, len(a[::4])))
+            _rec['level'] = min(1.0, rms / 6000.0)
+            _rec['peak'] = max(_rec.get('peak', 0), rms)
             if noise is None:
                 noise = rms
                 continue
@@ -288,6 +292,9 @@ def listen_stop(_=None):
     _stop_rec()
     if long < 0.6 or not os.path.exists(WAV_IN) or os.path.getsize(WAV_IN) < 8000:
         return {'ok': False, 'message': 'Non ho sentito niente. Controlla che il microfono sia acceso e riprova.'}
+    if _rec.get('peak', 0) < 120:
+        return {'ok': False, 'message': 'Il microfono non manda nessun suono: forse è spento o Rise non lo riconosce su questo computer. '
+                                         'Controlla il tasto del microfono sulla tastiera, oppure scrivi la domanda.'}
     voice = _trim(WAV_IN)
     if not voice:
         return {'ok': False, 'message': 'Non ho sentito la tua voce. Parla un po’ più forte o più vicino al computer.'}
@@ -319,36 +326,65 @@ def _clean_for_voice(t):
     return re.sub(r'\s+\n', '\n', t).strip()[:1500]
 
 
+def _log_tail(n=300):
+    try:
+        return open('/tmp/rise-voce.log', errors='replace').read()[-n:].strip()
+    except OSError:
+        return ''
+
+
 def _tts_proc():
+    """Avvia (una volta) il motore della voce e aspetta che abbia caricato il modello."""
     p = _tts['proc']
     if p and p.poll() is None:
         return p
-    player = _which('pw-play') or _which('aplay') or 'true'
+    player = _which('pw-play') or _which('paplay') or _which('aplay')
+    if not player:
+        raise RuntimeError('non trovo il programma per riprodurre l’audio')
     env = dict(os.environ)
     env.pop('LD_PRELOAD', None)
     env['OMP_NUM_THREADS'] = str(max(1, min(4, os.cpu_count() or 2)))
+    log = open('/tmp/rise-voce.log', 'a')
+    log.write('\n--- avvio voce %s (player %s)\n' % (time.strftime('%H:%M:%S'), player))
+    log.flush()
     p = subprocess.Popen(['nice', '-n', '2', KOKORO_PY, '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'risetts.py'), DIR, player],
-                         stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=open('/tmp/rise-voce.log', 'a'),
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
                          env=env, start_new_session=True, text=True)
+    ready = threading.Event()
+
+    def wait_ready():
+        try:
+            for line in p.stdout:
+                if line.strip() == 'pronto':
+                    ready.set()
+        except Exception:
+            pass
+    threading.Thread(target=wait_ready, daemon=True).start()
+    t0 = time.time()
+    while time.time() - t0 < 40 and not ready.is_set():
+        if p.poll() is not None:
+            raise RuntimeError(_log_tail() or 'il motore della voce si è chiuso')
+        time.sleep(0.2)
+    if not ready.is_set():
+        raise RuntimeError('il motore della voce non risponde')
     _tts['proc'] = p
     return p
 
 
 def _tts_send(obj):
     import json
-    try:
-        p = _tts_proc()
-        p.stdin.write(json.dumps(obj) + '\n')
-        p.stdin.flush()
-        return True
-    except (OSError, ValueError):
-        _tts['proc'] = None
-        return False
+    p = _tts_proc()
+    p.stdin.write(json.dumps(obj) + '\n')
+    p.stdin.flush()
+    return True
 
 
 def stop_speaking(_=None):
     if _tts['proc'] and _tts['proc'].poll() is None:
-        _tts_send({'stop': True})
+        try:
+            _tts_send({'stop': True})
+        except Exception:
+            pass
     p = _play['proc']
     _play['proc'] = None
     if p and p.poll() is None:
@@ -366,7 +402,11 @@ def say(a):
             return {'ok': False, 'need': 'download'}
         text = _clean_for_voice(a.get('text') or '')
         if text:
-            _tts_send({'say': text, 'voice': KOKORO_VOICES[v], 'speed': a.get('speed') or 1.0})
+            try:
+                _tts_send({'say': text, 'voice': KOKORO_VOICES[v], 'speed': a.get('speed') or 1.0})
+            except Exception as e:
+                _tts['proc'] = None
+                return {'ok': False, 'message': 'La voce non parte: %s' % str(e)[-200:]}
         return {'ok': True}
     exe = _piper()
     if v not in VOICES or not exe:
@@ -401,10 +441,17 @@ def say(a):
     return {'ok': True}
 
 
+def _safe(f):
+    try:
+        f()
+    except Exception:
+        pass
+
+
 def warm(_=None):
     """Accende in anticipo il motore della voce (caricare il modello richiede qualche secondo)."""
     if _kokoro() and all(os.path.exists(os.path.join(DIR, f)) for f, _ in KOKORO_FILES):
-        _tts_proc()
+        threading.Thread(target=lambda: _safe(_tts_proc), daemon=True).start()
     return {'ok': True}
 
 

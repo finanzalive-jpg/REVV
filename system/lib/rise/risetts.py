@@ -53,11 +53,13 @@ def player():
                 pass
             continue
         try:
-            p = subprocess.Popen([PLAYER, path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            p = subprocess.Popen([PLAYER, path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             cur['proc'] = p
-            p.wait()
-        except OSError:
-            pass
+            _, err = p.communicate()
+            if p.returncode not in (0, -15) and err:
+                print('riproduzione:', err.decode(errors='replace')[-300:], file=sys.stderr, flush=True)
+        except OSError as e:
+            print('riproduzione:', e, file=sys.stderr, flush=True)
         cur['proc'] = None
         try:
             os.remove(path)
