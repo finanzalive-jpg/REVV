@@ -117,6 +117,32 @@ def _fetch(url, dst):
     risestore.replace(part, dst)
 
 
+def _find_elsewhere(fname):
+    """Un file della voce portato con un'altra chiavetta o mandato con Rise Drop."""
+    import glob
+    places = [os.path.join(HOME, d) for d in ('Download', 'Downloads', 'Scaricati')]
+    places += glob.glob('/media/*') + glob.glob('/media/*/*') + glob.glob('/mnt/*')
+    for d in places:
+        for sub in ('', 'rise-dati/voce', 'voce', 'rise-dati/models', 'models'):
+            p = os.path.join(d, sub, fname)
+            if os.path.isfile(p) and os.path.dirname(os.path.abspath(p)) != os.path.abspath(DIR):
+                return p
+    return None
+
+
+def _copy_in(src, dst):
+    import shutil as _sh
+    part = dst + '.part'
+    with open(src, 'rb') as i, risestore.open_write(part) as o:
+        while True:
+            buf = i.read(4 << 20)
+            if not buf:
+                break
+            o.write(buf)
+            _dl['done'] += len(buf)
+    risestore.replace(part, dst)
+
+
 def _setup(voice):
     try:
         jobs = []
@@ -131,7 +157,12 @@ def _setup(voice):
                 jobs += [(url, f), (url + '.json', f + '.json')]
         for url, f in jobs:
             _dl['what'] = f
-            _fetch(url, os.path.join(DIR, f))
+            src = _find_elsewhere(f)
+            if src:                                   # c'è già su un'altra chiavetta: si copia, niente download
+                _dl['total'] += os.path.getsize(src)
+                _copy_in(src, os.path.join(DIR, f))
+            else:
+                _fetch(url, os.path.join(DIR, f))
         risestore.sync()
     except Exception as e:
         _dl['error'] = 'Non riesco a scaricare la voce. Controlla la connessione e riprova. (%s)' % e
