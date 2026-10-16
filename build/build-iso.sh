@@ -32,12 +32,22 @@ apt-get install -y -qq debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-a
 log "2/9 Sistema Ubuntu di base ($CODENAME)"
 rm -rf "$WORK"; mkdir -p "$WORK" "$OUT"
 debootstrap --arch=amd64 --variant=minbase --components=main,restricted,universe,multiverse "$CODENAME" "$CH" "$MIRROR"
-cat > "$CH/etc/apt/sources.list" <<EOF
-deb $MIRROR $CODENAME main restricted universe multiverse
-deb $MIRROR $CODENAME-updates main restricted universe multiverse
-deb http://security.ubuntu.com/ubuntu $CODENAME-security main restricted universe multiverse
+# Fonti dei pacchetti nel formato moderno (sources.list.d/ubuntu.sources):
+# all'avvio dalla chiavetta casper le ignora, così non prova a scaricare da internet e l'avvio è veloce.
+: > "$CH/etc/apt/sources.list"
+cat > "$CH/etc/apt/sources.list.d/ubuntu.sources" <<EOF
+Types: deb
+URIs: $MIRROR
+Suites: $CODENAME $CODENAME-updates
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+
+Types: deb
+URIs: http://security.ubuntu.com/ubuntu
+Suites: $CODENAME-security
+Components: main restricted universe multiverse
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
-rm -f "$CH/etc/apt/sources.list.d/ubuntu.sources"
 for m in proc sys dev dev/pts; do mount --bind "/$m" "$CH/$m"; done
 cp -L /etc/resolv.conf "$CH/etc/resolv.conf"
 printf '#!/bin/sh\nexit 101\n' > "$CH/usr/sbin/policy-rc.d"; chmod +x "$CH/usr/sbin/policy-rc.d"

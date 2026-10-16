@@ -1,7 +1,7 @@
 #!/bin/sh
-# Rise – avvia la sessione grafica.
+# Rise – avvia la sessione grafica e la fa ripartire da sola se si chiude per un errore.
 # labwc gestisce le finestre e avvia rise-shell (vedi /etc/xdg/labwc/autostart).
-exec >/tmp/rise-session.log 2>&1
+LOG=/tmp/rise-session.log
 export XDG_SESSION_TYPE=wayland
 export GDK_BACKEND=wayland
 # Se manca una scheda video con accelerazione (es. macchine virtuali), disegna via software.
@@ -10,9 +10,23 @@ if systemd-detect-virt -q; then
   export WLR_NO_HARDWARE_CURSORS=1
   export WEBKIT_DISABLE_DMABUF_RENDERER=1
 fi
-if command -v labwc >/dev/null 2>&1; then
-  exec labwc
-fi
-# Ripiego: una sola finestra a tutto schermo
-export RISE_SINGLE=1
-exec cage -s -- /usr/local/bin/rise-shell
+
+fails=0
+while :; do
+  # tiene il registro della sessione precedente per capire cosa è andato storto
+  [ -f "$LOG" ] && mv -f "$LOG" "$LOG.prima"
+  [ -f /tmp/rise-shell.log ] && mv -f /tmp/rise-shell.log /tmp/rise-shell.log.prima
+  start=$(date +%s)
+  if [ "$fails" -lt 3 ] && command -v labwc >/dev/null 2>&1; then
+    labwc >"$LOG" 2>&1
+  else
+    # dopo 3 chiusure di fila: modalità semplice, una sola finestra a tutto schermo
+    RISE_SINGLE=1 cage -s -- /usr/local/bin/rise-shell >"$LOG" 2>&1
+  fi
+  code=$?
+  echo "$(date '+%F %T') sessione chiusa (codice $code)" >> /tmp/rise-crash.log
+  if [ $(( $(date +%s) - start )) -lt 60 ]; then fails=$((fails + 1)); else fails=0; fi
+  # se si chiude troppe volte anche in modalità semplice, aspetta un po' prima di riprovare
+  [ "$fails" -gt 5 ] && sleep 10
+  sleep 1
+done

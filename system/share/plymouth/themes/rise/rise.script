@@ -1,46 +1,60 @@
-// Rise – schermata di avvio: logo con il portale di luce, una scintilla che scorre e il tempo di avvio
-W = Window.GetWidth();
-H = Window.GetHeight();
-k = H / 1080;
-if (k > 1.6) k = 1.6;
+// Rise – schermata di avvio: logo con il portale di luce, una scintilla che scorre e il tempo di avvio.
+// La risoluzione può cambiare durante l'avvio (quando parte il driver della scheda video):
+// per questo tutte le posizioni vengono ricalcolate quando cambiano larghezza o altezza.
 
 Window.SetBackgroundTopColor(0.01, 0.02, 0.06);
 Window.SetBackgroundBottomColor(0.03, 0.08, 0.22);
 
-bg = Image("bg.png").Scale(W, H);
-bg_s = Sprite(bg);
-bg_s.SetZ(-100);
+bg0 = Image("bg.png");
+logo0 = Image("logo.png");
+bar0 = Image("bar.png");
+spark0 = Image("spark.png");
+tag0 = Image("tagline.png");
 
-cx = W / 2;
-cy = H * 0.42;
+bg_s = Sprite();    bg_s.SetZ(-100);
+logo_s = Sprite();  logo_s.SetZ(10); logo_s.SetOpacity(0);
+bar_s = Sprite();   bar_s.SetZ(10);
+spark_s = Sprite(); spark_s.SetZ(20);
+tag_s = Sprite();   tag_s.SetZ(10); tag_s.SetOpacity(0);
+time_s = Sprite();  time_s.SetZ(30);
+msg_s = Sprite();   msg_s.SetZ(30);
+pw_s = Sprite();    pw_s.SetZ(30);
 
-logo = Image("logo.png");
-logo = logo.Scale(logo.GetWidth() * k, logo.GetHeight() * k);
-logo_s = Sprite(logo);
-logo_s.SetPosition(cx - logo.GetWidth() / 2, cy - logo.GetHeight() / 2, 10);
-logo_s.SetOpacity(0);
+lw = 0; lh = 0;
+fun layout() {
+  W = Window.GetWidth();
+  H = Window.GetHeight();
+  if (W < 1 || H < 1) return;
+  lw = W; lh = H;
+  k = H / 1080;
+  if (W / 1920 < k) k = W / 1920;   // schermi stretti o verticali
+  if (k > 1.6) k = 1.6;
+  if (k < 0.35) k = 0.35;
+  cx = Window.GetX() + W / 2;
+  cy = Window.GetY() + H * 0.42;
 
-// linea di luce sotto il logo, con una scintilla che la percorre
-bar = Image("bar.png");
-bar = bar.Scale(bar.GetWidth() * k, bar.GetHeight() * k);
-bar_s = Sprite(bar);
-by = cy + logo.GetHeight() / 2 + 40 * k;
-bar_s.SetPosition(cx - bar.GetWidth() / 2, by, 10);
+  bg_s.SetImage(bg0.Scale(W, H));
+  bg_s.SetPosition(Window.GetX(), Window.GetY(), -100);
 
-spark = Image("spark.png");
-spark = spark.Scale(spark.GetWidth() * k, spark.GetHeight() * k);
-spark_s = Sprite(spark);
-spark_s.SetZ(20);
+  logo = logo0.Scale(logo0.GetWidth() * k, logo0.GetHeight() * k);
+  logo_s.SetImage(logo);
+  logo_s.SetPosition(cx - logo.GetWidth() / 2, cy - logo.GetHeight() / 2, 10);
 
-tag = Image("tagline.png");
-tag = tag.Scale(tag.GetWidth() * k, tag.GetHeight() * k);
-tag_s = Sprite(tag);
-tag_s.SetPosition(cx - tag.GetWidth() / 2, by + 40 * k, 10);
-tag_s.SetOpacity(0);
+  bar = bar0.Scale(bar0.GetWidth() * k, bar0.GetHeight() * k);
+  bar_s.SetImage(bar);
+  by = cy + logo.GetHeight() / 2 + 40 * k;
+  bar_s.SetPosition(cx - bar.GetWidth() / 2, by, 10);
+
+  spark = spark0.Scale(spark0.GetWidth() * k, spark0.GetHeight() * k);
+  spark_s.SetImage(spark);
+
+  tag = tag0.Scale(tag0.GetWidth() * k, tag0.GetHeight() * k);
+  tag_s.SetImage(tag);
+  tag_s.SetPosition(cx - tag.GetWidth() / 2, by + 40 * k, 10);
+}
+layout();
 
 // contatore del tempo di avvio (la schermata si aggiorna 50 volte al secondo)
-time_s = Sprite();
-time_s.SetZ(30);
 fun show_time(frames) {
   tenths = Math.Int(frames / 5);
   secs = Math.Int(tenths / 10);
@@ -52,6 +66,8 @@ fun show_time(frames) {
 
 t = 0;
 fun refresh_callback() {
+  if (Window.GetWidth() != lw || Window.GetHeight() != lh) layout();
+  if (lw < 1) return;
   t++;
   if (t % 5 == 0) show_time(t);
   // il logo compare dal buio, poi "respira" piano
@@ -68,19 +84,17 @@ fun refresh_callback() {
 Plymouth.SetRefreshFunction(refresh_callback);
 
 // messaggi e password (es. dischi cifrati): testo semplice in basso
-msg_s = Sprite();
 fun message_callback(text) {
   msg_s.SetImage(Image.Text(text, 0.8, 0.86, 1));
-  msg_s.SetPosition(cx - msg_s.GetImage().GetWidth() / 2, H * 0.9, 30);
+  msg_s.SetPosition(cx - msg_s.GetImage().GetWidth() / 2, Window.GetY() + lh * 0.9, 30);
 }
 Plymouth.SetMessageFunction(message_callback);
 
-pw_s = Sprite();
 fun display_password_callback(prompt, bullets) {
   s = prompt + "  ";
   for (i = 0; i < bullets; i++) s += "•";
   pw_s.SetImage(Image.Text(s, 1, 1, 1));
-  pw_s.SetPosition(cx - pw_s.GetImage().GetWidth() / 2, H * 0.85, 30);
+  pw_s.SetPosition(cx - pw_s.GetImage().GetWidth() / 2, Window.GetY() + lh * 0.85, 30);
   pw_s.SetOpacity(1);
 }
 fun display_normal_callback() { pw_s.SetOpacity(0); }

@@ -135,7 +135,9 @@ class Rise(Gtk.Application):
         p.set_default_size(800, BAR_H)
         self.make_window('panel', url_for(role='panel'), p)
         self.views['panel'].set_size_request(-1, BAR_H)
+        p.set_size_request(-1, BAR_H)
         p.present()
+        GLib.timeout_add_seconds(4, self.check_panel)
         # menu Start e pannello rapido (sopra a tutto, nascosto)
         o = Gtk.Window(application=self)
         LS.init_for_window(o)
@@ -170,6 +172,18 @@ class Rise(Gtk.Application):
         # indice per la ricerca dei file, aggiornato con calma dopo l'avvio
         GLib.timeout_add_seconds(90, self.index_later)
 
+    def check_panel(self):
+        # la barra deve essere alta BAR_H: se il sistema l'ha fatta più bassa, la rimette a posto
+        p = self.windows.get('panel')
+        if p:
+            h = p.get_height()
+            print('rise-size panel', p.get_width(), 'x', h, 'scale', p.get_scale_factor(), flush=True)
+            if h and h < BAR_H:
+                p.set_default_size(p.get_width() or 800, BAR_H)
+                LS.set_exclusive_zone(p, BAR_H)
+                p.queue_resize()
+        return False
+
     def make_window(self, name, uri, win):
         view = WebKit.WebView()
         view.set_background_color(Gdk.RGBA(0, 0, 0, 0))
@@ -200,7 +214,8 @@ class Rise(Gtk.Application):
         args = msg.get('args') or {}
         ui = UI_CMDS.get(cmd)
         if os.environ.get('RISE_DEBUG'):
-            print('cmd', name, cmd, json.dumps(args)[:200], file=sys.stderr, flush=True)
+            safe = {k: ('••••' if 'pass' in k else v) for k, v in args.items()} if isinstance(args, dict) else args
+            print('cmd', name, cmd, json.dumps(safe)[:200], file=sys.stderr, flush=True)
         if ui:  # comandi dell'interfaccia: subito, nel thread principale
             try:
                 res = {'data': ui(self, args, name)}

@@ -200,6 +200,8 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .bars i.on{background:linear-gradient(#5ccf8f,var(--ok))}
 .pw{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
 .pw input{flex:1;min-width:140px;height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;font:inherit}
+.pw .eye{height:34px;padding:0 10px;font-size:.9em}
+.pw .kbd-hint{flex-basis:100%;color:var(--ink-soft);font-size:.86em}
 .diag{display:grid;gap:5px;margin-top:10px}
 .diag div{display:flex;gap:10px;align-items:center;padding:7px 12px;border-radius:5px;background:var(--paper-2);font-size:.95em}
 .diag .st{width:16px;height:16px;border-radius:50%;flex:none;border:2px solid #aabbc4}
@@ -366,6 +368,13 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 }
 /* ===== Ruoli: Rise con più finestre (labwc) ===== */
 html[data-role=desktop] #bar,html[data-role=desktop] .pop{display:none!important}
+/* barra: occupa sempre tutta l'altezza che lo schermo le dà, e gli elementi si adattano invece di essere tagliati */
+html[data-role=panel] #bar{height:100vh!important;bottom:0;top:0}
+html[data-role=panel] #orb{width:min(46px,calc(100vh - 6px));height:min(46px,calc(100vh - 6px))}
+html[data-role=panel] #orb svg{width:min(34px,calc(100vh - 16px));height:min(34px,calc(100vh - 16px))}
+html[data-role=panel] .task{height:min(44px,calc(100vh - 8px))}
+html[data-role=panel] .tray-btn{height:min(42px,calc(100vh - 8px))}
+@media (max-height:46px){html[data-role=panel] #clock small{display:none}html[data-role=panel] #clock{font-size:.95em}}
 html[data-role=popup] #start{background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.12) 33%,transparent 40%),linear-gradient(rgba(26,70,98,.97),rgba(14,44,64,.97))}
 html[data-role=popup] #quick{background:rgba(240,248,252,.98)}
 html[data-role=panel] body,html[data-role=popup] body,html[data-role=app] body{background:transparent}
@@ -555,10 +564,12 @@ const setBacklight=debounce(v=>SYS.call('bright.set',{percent:v}).catch(()=>{}),
 const QS=new URLSearchParams(location.search),ROLE=NATIVE?(QS.get('role')||'full'):'full',MW=NATIVE&&ROLE!=='full';
 const APP_ID=QS.get('app');let GOTO=null;try{GOTO=QS.get('goto')?JSON.parse(QS.get('goto')):null}catch(e){}
 document.documentElement.dataset.role=ROLE;
+if(MW)addEventListener('load',()=>console.log('rise-size',ROLE,innerWidth+'x'+innerHeight,'dpr',devicePixelRatio));
 let NAPPS=[];  // programmi veri installati (browser, Office, lettore video)
 let SYNCING=false;
-const shareState=debounce(()=>{if(MW&&!SYNCING)SYS.call('state.changed',{state:S}).catch(()=>{})},150);
-window.__riseSync=st=>{SYNCING=true;try{Object.assign(S,st||{});apply();refreshSettings&&refreshSettings(null,true)}finally{SYNCING=false}};
+let LASTSYNC='';
+const shareState=debounce(()=>{if(!MW||SYNCING)return;const j=JSON.stringify(S);if(j===LASTSYNC)return;LASTSYNC=j;SYS.call('state.changed',{state:S}).catch(()=>{})},150);
+window.__riseSync=st=>{const before=JSON.stringify(S);SYNCING=true;try{Object.assign(S,st||{});LASTSYNC=JSON.stringify(S);if(LASTSYNC===before)return;apply();refreshSettings&&refreshSettings(null,true)}finally{SYNCING=false}};
 async function netRefresh(scan){if(!NATIVE)return;
   try{LIVE.net=await SYS.call('net.status');S.wifi=!!LIVE.net.active}catch(e){}
   renderTrayNet();refreshSettings('rete',true);if(!$('#quick').hidden)openQuick();
@@ -608,6 +619,7 @@ const SETS=[
  {id:'drop',sec:'condivisione',label:'Rise Drop',desc:'Ricevi e invia file a telefoni e PC vicini',k:'rise drop airdrop localsend invia ricevi file telefono condividi'},
  {id:'shares',sec:'condivisione',label:'Cartelle condivise',desc:'Cartelle che gli altri PC possono aprire',k:'condividi cartella rete samba windows'},
  {id:'info',sec:'sistema',label:'Informazioni sistema',desc:'Memoria, avvio, versione',k:'memoria ram versione info sistema aggiornamenti spazio disco'},
+ {id:'kbd',sec:'sistema',label:'Tastiera',desc:'Lingua dei tasti: italiana, inglese, tedesca…',k:'tastiera layout lingua tasti simboli chiocciola keyboard'},
  {id:'hw',sec:'sistema',label:'Hardware e driver',desc:'Scheda video, stampante, webcam…',k:'driver hardware stampante scheda video webcam periferiche usb bluetooth'}
 ];
 
@@ -1070,15 +1082,17 @@ function renderWelcome(b){
 }
 
 /* ================= Impostazioni ================= */
-let setRefresh=null;
+let setRefresh=null,DRAGGING=false;
+const KBD_NAMES={it:'Italiana',us:'Inglese (USA)',gb:'Inglese (Regno Unito)',de:'Tedesca',fr:'Francese',es:'Spagnola',ch:'Svizzera (tedesca)','ch(fr)':'Svizzera (francese)',pt:'Portoghese'};
+addEventListener('pointerup',()=>{DRAGGING=false},true);addEventListener('pointercancel',()=>{DRAGGING=false},true);
 function refreshSettings(sec,soft){if(setRefresh)setRefresh(sec,soft)}
 function renderSettings(b,opts){
   b.innerHTML=`<div class="set"><nav class="set-nav">${SECTIONS.map(s=>`<button data-s="${s.id}" title="${s.label}">${I(s.ic,26)}<span>${s.label}</span></button>`).join('')}</nav><div class="set-main"></div></div>`;
   const main=$('.set-main',b);let cur='schermo';
   const row=(id,title,desc,ctl,extra='')=>`<div class="row" data-id="${id}"><div class="txt"><b>${title}</b><small>${desc}</small>${extra}</div><div class="ctl">${ctl}</div></div>`;
   const sw=(k,label)=>`<button class="switch" role="switch" aria-checked="${S[k]}" aria-label="${label}" data-k="${k}"></button>`;
-  function show(sec,hl){
-    cur=sec;const s=SECTIONS.find(x=>x.id===sec);
+  function show(sec,hl,keep){
+    const y=keep&&sec===cur?main.scrollTop:0;cur=sec;const s=SECTIONS.find(x=>x.id===sec);
     $$('.set-nav button',b).forEach(x=>x.setAttribute('aria-current',String(x.dataset.s===sec)));
     let h=`<h2>${s.label}</h2><p class="lead">${s.lead}</p><div class="rows">`;
     if(sec==='schermo'){
@@ -1137,6 +1151,7 @@ function renderSettings(b,opts){
         `<div class="drop-name"><label for="s-alias">Nome con cui ti vedono</label><input id="s-alias" value="" placeholder="Rise di casa"></div>`);
       h+=`</div><div class="st-label" style="padding:18px 2px 0" data-id="shares">Cartelle condivise in rete</div><div class="hw" id="sh-list"><p class="note">${NATIVE?'Carico…':'Disponibile sul PC.'}</p></div><p class="note">Per condividere una cartella aprila in Esplora file e premi “Condividi”.</p><div>`;
     }
+    if(sec==='sistema')h+=row('kbd','Tastiera','La disposizione dei tasti del tuo computer. Se premendo un tasto esce un simbolo diverso da quello disegnato, cambiala qui.',`<select id="s-kbd" aria-label="Tastiera">${Object.entries(KBD_NAMES).map(([k,v])=>`<option value="${k}"${(S.kbd||'it')===k?' selected':''}>${v}</option>`).join('')}</select>`);
     if(sec==='sistema'&&NATIVE){h+=`</div><div id="sysinfo"><p class="lead">Leggo le informazioni del computer…</p></div><div>`}
     else if(sec==='sistema'){
       h+=`</div><dl class="kv" data-id="info">
@@ -1154,7 +1169,7 @@ function renderSettings(b,opts){
         .map(([ic,n,d])=>`<div>${I(ic,30)}<span><b>${n}</b><small>${d}</small></span><span class="tag">Funziona</span></div>`).join('')}
       </div><p class="note">Nel prototipo questi dati sono di esempio. Nella versione installata qui compare il tuo hardware vero, e Rise cerca e installa da solo i driver che mancano.</p><div>`;
     }
-    main.innerHTML=h+'</div>';main.scrollTop=0;bind();
+    main.innerHTML=h+'</div>';main.scrollTop=y;bind();
     if(sec==='sistema'&&NATIVE)fillSys();
     if(sec==='condivisione'&&NATIVE)fillShare();
     if(hl){const r=$(`[data-id="${hl}"]`,main);if(r){r.scrollIntoView({block:'center'});if(r.classList.contains('row')){r.classList.add('flash');setTimeout(()=>r.classList.remove('flash'),1600)}}}
@@ -1179,16 +1194,17 @@ function renderSettings(b,opts){
       L.innerHTML=sh.length?sh.map((x,i)=>`<div>${I('folder',30)}<span><b>${esc(x.name)}</b><small>${esc(x.path)} · dagli altri PC: \\\\${esc(r.host)}\\${esc(x.name)}${x.writable?' · modificabile':' · sola lettura'}</small></span><button class="btn" data-r="${i}">Smetti</button></div>`).join(''):'<p class="note">Non stai condividendo nessuna cartella.</p>';
       $$('[data-r]',L).forEach(b2=>b2.onclick=()=>SYS.call('share.remove',{path:sh[+b2.dataset.r].path}).then(fillShare))}).catch(()=>{})}
   function nativeConnect(net){const x=(LIVE.nets||[])[+net.dataset.i];if(!x)return;
-    const go=(pw)=>{const btn=$('.pw button',net)||$('.conn',net);if(btn){btn.disabled=true;btn.textContent='Mi collego…'}
+    const go=(pw)=>{const btn=$('.pw .primary',net)||$('.conn',net);if(btn){btn.disabled=true;btn.textContent='Mi collego…'}
       SYS.call('net.connect',{ssid:x.ssid,password:pw||''}).then(r=>{if(r.ok){show('rete');netRefresh(true)}else{if(btn){btn.disabled=false;btn.textContent='Collegati'}let e=$('.net-err',net);if(!e){e=document.createElement('small');e.className='net-err';net.appendChild(e)}e.textContent=r.message}})
         .catch(err=>{if(btn){btn.disabled=false;btn.textContent='Collegati'}})};
     if(!x.secure){go('');return}
     if($('.pw',net))return;
     const pw=document.createElement('div');pw.className='pw';
-    pw.innerHTML=`<input type="password" placeholder="Password di ${esc(x.ssid)}" aria-label="Password"><button class="btn primary">Collegati</button>`;
+    pw.innerHTML=`<input type="password" placeholder="Password di ${esc(x.ssid)}" aria-label="Password" autocomplete="off" spellcheck="false"><button class="btn eye" type="button">mostra</button><button class="btn primary">Collegati</button><small class="kbd-hint">Tastiera in uso: ${esc(KBD_NAMES[S.kbd||'it']||S.kbd)}. Se la password ha simboli e non funziona, cambiala in Impostazioni → Sistema → Tastiera.</small>`;
     net.appendChild(pw);const inp=$('input',pw);inp.focus();const c0=$('.conn',net);if(c0)c0.hidden=true;
+    const eye=$('.eye',pw);eye.onclick=()=>{const v=inp.type==='password';inp.type=v?'text':'password';eye.textContent=v?'nascondi':'mostra';inp.focus()};
     const ok=()=>{if(!inp.value){inp.placeholder='Scrivi la password (è sul router o te la dà chi gestisce la rete)';return}go(inp.value)};
-    $('button',pw).onclick=ok;inp.onkeydown=e=>{if(e.key==='Enter')ok()}}
+    $('.primary',pw).onclick=ok;inp.onkeydown=e=>{if(e.key==='Enter')ok()}}
   function nativeDiag(){const d=$('#diag',main),btn=$('#s-fix',main);btn.disabled=true;btn.textContent='Controllo…';
     d.innerHTML=`<div><span class="st run"></span><span style="flex:1">Controllo scheda, collegamento, router, internet e DNS…</span></div>`;
     SYS.call('net.diag').then(r=>{if(!d.isConnected)return;
@@ -1201,9 +1217,11 @@ function renderSettings(b,opts){
     on0('#s-rescan','click',()=>netRefresh(true));
     $$('.switch[data-k]',main).forEach(x=>x.onclick=()=>{S[x.dataset.k]=!S[x.dataset.k];apply();show(cur,x.dataset.k)});
     const on=(sel,ev,fn)=>{const e=$(sel,main);if(e)e.addEventListener(ev,fn)};
+    on('#s-bright','pointerdown',()=>{DRAGGING=true});on('#s-vol','pointerdown',()=>{DRAGGING=true});
     on('#s-bright','input',e=>{S.bright=+e.target.value;apply();if(NATIVE&&LIVE.backlight)setBacklight(S.bright);e.target.closest('.row').querySelector('small b').textContent=S.bright+'%'});
     on('#s-vol','input',e=>{S.vol=+e.target.value;apply();if(NATIVE)setVolume(S.vol);e.target.closest('.row').querySelector('small').innerHTML=`Adesso: <b>${S.vol}%</b>${S.vol===0?' · audio disattivato':''}.`});
     on('#s-res','change',e=>{S.res=e.target.value;save()});
+    on('#s-kbd','change',e=>{S.kbd=e.target.value;save();if(NATIVE)SYS.call('kbd.set',{layout:S.kbd}).catch(()=>{})});
     on('#s-hz','change',e=>{S.hz=e.target.value;save()});
     $$('[data-t]',main).forEach(x=>x.onclick=()=>{S.text=x.dataset.t;apply();show(cur)});
     $$('[data-o]',main).forEach(x=>x.onclick=()=>{S.out=x.dataset.o;save();show(cur)});
@@ -1240,7 +1258,10 @@ function renderSettings(b,opts){
   }
   $$('.set-nav button',b).forEach(x=>x.onclick=()=>show(x.dataset.s));
   setRefresh=(sec,soft)=>{if(!b.isConnected){setRefresh=null;return}if(sec&&sec!==cur)return;
-    if(soft&&(($('#diag',main)&&$('#diag',main).children.length)||$('.pw',main)||(main.contains(document.activeElement)&&document.activeElement.tagName==='INPUT'&&document.activeElement.type!=='range')))return;show(cur)};
+    if(soft&&!sec&&['sistema','condivisione'].includes(cur))return;  // pagine che non dipendono dalle impostazioni: restano ferme
+
+    if(soft&&(cur==='sistema'||cur==='condivisione'))return; // pagine con dati letti una volta: niente ridisegni automatici
+    if(soft&&(($('#diag',main)&&$('#diag',main).children.length)||$('.pw',main)||DRAGGING||(main.contains(document.activeElement)&&['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))))return;show(cur,null,soft)};
   const goto=(id)=>{const s=SETS.find(x=>x.id===id);if(s)show(s.sec,id)};
   if(opts&&opts.goto)goto(opts.goto);else show('schermo');
   return goto;
@@ -1290,10 +1311,10 @@ apply();renderTasks();
 if(!MW)openApp('welcome');
 else if(ROLE==='desktop'){let first=true;try{first=!sessionStorage.getItem('rise.w');sessionStorage.setItem('rise.w','1')}catch(e){}if(first){setTimeout(()=>openApp('welcome'),400);bootBadge()}}
 else if(ROLE==='app'&&APPS[APP_ID]){openApp(APP_ID,GOTO!=null?{goto:GOTO}:{});W[APP_ID].el.classList.add('appwin')}
+if(NATIVE)SYS.call('bright.get').then(r=>{LIVE.backlight=r.available;if(r.available&&(!MW||ROLE==='panel'||APP_ID==='settings'))S.bright=r.percent;apply();refreshSettings('schermo',true)}).catch(()=>{});
 if(MW&&(ROLE==='popup'||ROLE==='panel'))SYS.call('native.list').then(l=>{NAPPS=l||[]}).catch(()=>{});
 if(NATIVE&&(!MW||ROLE==='panel'||ROLE==='popup'||APP_ID==='settings')){
   SYS.call('audio.get').then(a=>{LIVE.audio=a;if(a.available){S.vol=a.volume;renderTrayNet()}refreshSettings('suono',true)}).catch(()=>{});
-  SYS.call('bright.get').then(r=>{LIVE.backlight=r.available;if(r.available)S.bright=r.percent;apply();refreshSettings('schermo',true)}).catch(()=>{});
   netRefresh(true);setInterval(()=>netRefresh(false),15000);
   SYS.call('fs.roots').then(r=>{const n=(r.home||'').split('/').pop();if(n){$('#st-name').textContent=n.charAt(0).toUpperCase()+n.slice(1);$('#st-avatar').textContent=n.charAt(0).toUpperCase()}}).catch(()=>{});
 }

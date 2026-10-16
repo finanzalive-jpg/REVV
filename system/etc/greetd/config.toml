@@ -8,5 +8,5 @@ user = "rise"
 
 # Se Rise si chiude, compare un accesso testuale di emergenza
 [default_session]
-command = "agreety --cmd /bin/bash"
+command = "agreety --cmd /usr/local/bin/rise-session"
 user = "_greetd"

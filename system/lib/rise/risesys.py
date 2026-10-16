@@ -65,17 +65,58 @@ def net_scan(_):
     return sorted(nets.values(), key=lambda n: (not n['inUse'], -n['signal']))
 
 
+def sudo(cmd, timeout=20):
+    """Come root se possibile (sulla chiavetta live sudo non chiede password), altrimenti come utente."""
+    rc, out, err = run(['sudo', '-n'] + cmd, timeout)
+    if rc != 0 and err.startswith('sudo:'):
+        rc, out, err = run(cmd, timeout)
+    return rc, out, err
+
+
 def net_connect(a):
     ssid, pw = a.get('ssid', ''), a.get('password', '')
-    cmd = ['nmcli', 'device', 'wifi', 'connect', ssid] + (['password', pw] if pw else [])
-    rc, out, err = run(cmd, timeout=60)
+    if not ssid:
+        return {'ok': False, 'message': 'Rete non indicata.'}
+    # toglie eventuali profili vecchi o rimasti a metà con lo stesso nome
+    _, out, _ = run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'])
+    for line in out.splitlines():
+        f = nm_fields(line)
+        if len(f) >= 2 and f[0] == ssid and 'wireless' in f[1]:
+            sudo(['nmcli', 'connection', 'delete', 'id', ssid])
+    # come amministratore: la password viene salvata dal sistema e non serve nessun "portachiavi"
+    rc, out, err = sudo(['nmcli', 'device', 'wifi', 'connect', ssid] + (['password', pw] if pw else []), 60)
+    msg = err or out
+    if rc != 0 and pw and ('key-mgmt' in msg or 'Secrets were required' in msg or 'property is missing' in msg):
+        # secondo tentativo con un profilo scritto a mano (WPA2/WPA3 personale)
+        # (WPA2 prima, poi WPA3 per i router più recenti)
+        for km in ('wpa-psk', 'sae'):
+            sudo(['nmcli', 'connection', 'delete', 'id', ssid])
+            rc2, out2, err2 = sudo(['nmcli', 'connection', 'add', 'type', 'wifi', 'ifname', '*', 'con-name', ssid,
+                                    'ssid', ssid, 'wifi-sec.key-mgmt', km, 'wifi-sec.psk', pw,
+                                    'connection.autoconnect', 'yes'])
+            if rc2 != 0:
+                continue
+            rc, out, err = sudo(['nmcli', 'connection', 'up', 'id', ssid], 60)
+            msg = err or out
+            if rc == 0:
+                break
+        if rc != 0:
+            sudo(['nmcli', 'connection', 'delete', 'id', ssid])
     if rc == 0:
         return {'ok': True}
-    msg = err or out
-    if 'Secrets were required' in msg or 'password' in msg.lower() or '802-1x' in msg:
-        msg = 'La password non è corretta.'
+    if 'Secrets were required' in msg or 'invalid' in msg.lower() and 'psk' in msg.lower():
+        msg = ('La rete non ha accettato la password. Controllala con il pulsante "mostra": '
+               'se contiene simboli, verifica in Impostazioni → Tastiera che la tastiera sia quella giusta.')
     elif 'No network with SSID' in msg:
         msg = 'La rete non è più raggiungibile. Avvicinati al router e riprova.'
+    elif 'Not authorized' in msg or 'insufficient privileges' in msg.lower():
+        msg = 'Rise non ha il permesso di cambiare la rete. Riavvia il computer e riprova.'
+    elif 'timeout' in msg.lower() or 'timed out' in msg.lower():
+        msg = 'Il router non risponde. Avvicinati al router e riprova.'
+    else:
+        msg = 'Non riesco a collegarmi: ' + msg
+    if pw:  # la password non deve mai comparire nei messaggi
+        msg = msg.replace(pw, '••••')
     return {'ok': False, 'message': msg}
 
 
@@ -641,7 +682,36 @@ def share_remove(a):
     ok = _shares_write([s for s in _shares_read() if s['path'] != path])
     return {'ok': ok}
 
-CMDS = {'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
+
+# ---------------- Tastiera ----------------
+KBD = {'it': ('it', ''), 'us': ('us', ''), 'gb': ('gb', ''), 'de': ('de', ''), 'fr': ('fr', ''), 'es': ('es', ''),
+       'ch': ('ch', ''), 'ch(fr)': ('ch', 'fr'), 'pt': ('pt', '')}
+
+
+def kbd_set(a):
+    lay = a.get('layout', 'it')
+    if lay not in KBD:
+        return {'ok': False, 'message': 'Tastiera non conosciuta.'}
+    layout, variant = KBD[lay]
+    d = os.path.expanduser('~/.config/labwc')
+    os.makedirs(d, exist_ok=True)
+    lines = []
+    try:
+        for l in open('/etc/xdg/labwc/environment'):
+            if not l.startswith('XKB_DEFAULT_'):
+                lines.append(l.rstrip('\n'))
+    except OSError:
+        pass
+    lines.append('XKB_DEFAULT_LAYOUT=' + layout)
+    if variant:
+        lines.append('XKB_DEFAULT_VARIANT=' + variant)
+    with open(os.path.join(d, 'environment'), 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    # labwc rilegge la configurazione e cambia la tastiera subito, senza riavviare
+    rc = run(['labwc', '--reconfigure'])[0]
+    return {'ok': rc == 0}
+
+CMDS = {'kbd.set': kbd_set, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
         'net.diag': net_diag, 'audio.get': audio_get, 'audio.set': audio_set, 'bright.get': bright_get,
         'bright.set': bright_set, 'power': power, 'sys.info': sys_info, 'fs.roots': fs_roots,
         'fs.mount': fs_mount, 'fs.list': fs_list, 'fs.read': fs_read,
