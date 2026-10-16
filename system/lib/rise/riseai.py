@@ -103,7 +103,21 @@ def _import(mid, src):
         total = os.path.getsize(src)
         st.update(done=0, total=total, phase='import')
         if risestore.too_big(_dir(), total):
-            raise IOError('il file è più grande di 4 GB e non entra su una chiavetta FAT32')
+            # chiavetta FAT32: si salva in pezzi da 3,5 GB che llama.cpp legge insieme
+            if not _splitter():
+                raise IOError('il file è più grande di 4 GB e non entra su una chiavetta FAT32')
+            st['phase'] = 'split'
+            dst0 = dst[:-5]
+            for pre in (['sudo', '-n'], []):
+                subprocess.run(pre + [_splitter(), '--split', '--split-max-size', '3500M', src, dst0],
+                               capture_output=True, timeout=7200)
+                if _split_first(mid):
+                    break
+            if not _split_first(mid):
+                raise IOError('non riesco a salvarlo sulla chiavetta')
+            st['done'] = total
+            risestore.sync()
+            return
         with open(src, 'rb') as i, risestore.open_write(part) as o:
             while True:
                 buf = i.read(4 << 20)
