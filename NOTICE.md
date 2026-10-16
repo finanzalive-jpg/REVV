@@ -32,5 +32,5 @@ Windows is a trademark of Microsoft Corporation. Rise is an independent project 
 ## Assistant voice and web
 
 - whisper.cpp (MIT) with OpenAI Whisper models (MIT): speech recognition, models downloaded on first use.
-- Piper (MIT) with the Italian voices Paola and Riccardo from rhasspy/piper-voices: text to speech, voices downloaded on first use.
+- Kokoro-82M (Apache 2.0) via kokoro-onnx (MIT) with the Italian voices Sara and Nicola: text to speech, model downloaded on first use. Piper (MIT) as fallback.
 - Web search through DuckDuckGo's public HTML page; pages are fetched directly by the user's computer.
