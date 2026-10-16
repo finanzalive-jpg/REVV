@@ -408,10 +408,51 @@ class Rise(Gtk.Application):
             cmd.append(a['path'])
         if a.get('url'):
             cmd.append(a['url'])
+        self.launch_watched(nid, app.get('name') or nid, cmd)
+        return {'ok': True}
+
+    def launch_watched(self, nid, name, cmd, retry=True):
+        """Avvia un programma e, se si chiude da solo nei primi secondi, riprova in modalità grafica
+        semplice; se si chiude ancora, mostra il motivo invece di non fare niente."""
         env = dict(os.environ)
         env.pop('LD_PRELOAD', None)
-        subprocess.Popen(cmd, start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
-        return {'ok': True}
+        if not retry:
+            env['WGPU_BACKEND'] = 'gl'                # grafica più semplice (OpenGL)
+            env['LIBGL_ALWAYS_SOFTWARE'] = '1' if os.environ.get('RISE_SAFE_GPU') == '1' else env.get('LIBGL_ALWAYS_SOFTWARE', '0')
+        logp = '/tmp/rise-app-%s.log' % nid
+        log = open(logp, 'a')
+        log.write('\n--- %s %s %s\n' % (time.strftime('%H:%M:%S'), ' '.join(cmd), '(riprova)' if not retry else ''))
+        log.flush()
+        try:
+            proc = subprocess.Popen(cmd, start_new_session=True, stdout=log, stderr=log, env=env)
+        except OSError as e:
+            self.notify_error(name, str(e))
+            return
+        t0 = time.time()
+
+        def check():
+            if proc.poll() is None:
+                return time.time() - t0 < 8          # vivo: si controlla per 8 secondi
+            if proc.returncode == 0:
+                return False                         # chiuso normalmente (es. ha passato il file a una finestra già aperta)
+            if retry:
+                self.launch_watched(nid, name, cmd, retry=False)
+                return False
+            try:
+                tail = [l for l in open(logp, errors='replace').read().splitlines() if l.strip()][-2:]
+            except OSError:
+                tail = []
+            self.notify_error(name, ' · '.join(tail)[-220:])
+            return False
+        GLib.timeout_add(500, check)
+
+    def notify_error(self, name, why):
+        msg = '%s non è partito. %s' % (name, why)
+        code = 'window.__riseToast && window.__riseToast(%s)' % json.dumps(msg)
+        if 'desktop' in getattr(self, 'views', {}):
+            self.js('desktop', code)
+        else:
+            self.broadcast(code)
 
     def top_action(self, a, _name=None):
         if not self.toplevels:

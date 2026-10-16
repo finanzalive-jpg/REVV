@@ -597,6 +597,7 @@ const fdate=t=>new Date(t).toLocaleString('it-IT',{day:'2-digit',month:'2-digit'
 const ACCENTS={cielo:'#2186c9',acqua:'#138a7e',ambra:'#c27613',ardesia:'#55658a'};
 const S=Object.assign({bright:100,text:'m',night:false,wifi:true,net:'Casa-WiFi',vol:60,out:'Altoparlanti',accent:'cielo',glass:true,res:'1920 × 1080',hz:'60'},store.get('state',{}));
 const save=()=>{store.set('state',S);if(typeof shareState==='function')shareState()};
+window.__riseToast=m=>{let t=document.getElementById('rise-toast');if(!t){t=document.createElement('div');t.id='rise-toast';t.style.cssText='position:fixed;left:50%;bottom:70px;transform:translateX(-50%);max-width:80vw;background:#3a1f1f;color:#fff;padding:10px 16px;border-radius:8px;z-index:99999;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.35)';document.body.appendChild(t)}t.textContent=m;t.hidden=false;clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,9000)};
 const NATIVE=!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rise);
 const SYS=(()=>{let n=0;const wait={};
   window.__riseReply=(id,r)=>{const w=wait[id];if(!w)return;delete wait[id];if(r&&r.error)w.rej(new Error(r.error));else w.res(r?r.data:null)};
