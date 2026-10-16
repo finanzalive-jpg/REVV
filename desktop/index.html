@@ -363,6 +363,7 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .ai-phase{color:var(--ink-soft);display:inline-flex;align-items:center;gap:6px}.ai-live{margin-top:6px;padding:8px 10px;background:#f6f9fc;border:1px dashed var(--line);border-radius:6px;font-size:.92em;max-height:260px;overflow:auto}
 .ai-usb{margin:12px 0;padding:12px 14px;border:1px solid #9cc3f0;background:#eef6ff;border-radius:8px}.ai-usb p{margin:4px 0 10px;font-size:.92em}
 .ai-think-tg{font-size:.88em;display:inline-flex;align-items:center;gap:4px;margin-right:6px;cursor:pointer;white-space:nowrap}
+.ai-meteo{border-collapse:collapse;margin:8px 0 4px;font-size:.92em}.ai-meteo td{padding:3px 10px 3px 0;border-bottom:1px solid var(--line)}.ai-meteo tr.on td{font-weight:600;color:var(--accent)}
 .ai-mic{display:inline-grid;place-items:center;min-width:42px}.ai-mic.rec{background:#d83a3a;color:#fff;border-color:#b52626;transition:box-shadow .15s}
 @keyframes airec{50%{box-shadow:0 0 0 6px rgba(216,58,58,.25)}}
 .ai-voice{font:inherit;font-size:.9em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -1411,8 +1412,8 @@ function renderAssistant(b){
     const vsel=$('[data-voice]',body),mic=$('[data-mic]',body);let VOICE='f';try{const v=localStorage.getItem('rise.ai.voice');if(v!==null)VOICE=v}catch(e){}
     fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({messages:[{role:'system',content:AI_SYS()},{role:'user',content:'ciao'}],tools:AI_TOOLS,max_tokens:1,cache_prompt:true})}).catch(()=>{});
-    const thk=$('[data-think]',body);let THINK=true;try{const v=localStorage.getItem('rise.ai.think');if(v!==null)THINK=v==='1'}catch(e){}
-    thk.checked=THINK;thk.onchange=()=>{THINK=thk.checked;try{localStorage.setItem('rise.ai.think',THINK?'1':'0')}catch(e){}};
+    const thk=$('[data-think]',body);let THINK=false;try{const v=localStorage.getItem('rise.ai.think2');if(v!==null)THINK=v==='1'}catch(e){}
+    thk.checked=THINK;thk.onchange=()=>{THINK=thk.checked;try{localStorage.setItem('rise.ai.think2',THINK?'1':'0')}catch(e){}};
     vsel.value=VOICE;if(VOICE)SYS.call('voice.warm').catch(()=>{});
     async function voiceReady(v){let st;try{st=await SYS.call('voice.status')}catch(e){return false}
       const need=!st.sttReady||(v&&st.voices[v]&&!st.voices[v].ready);if(!need)return st;
@@ -1465,9 +1466,50 @@ function renderAssistant(b){
         const r=await SYS.call('web.read',{url:args.url||''});if(!r.ok)return r.message||'Pagina non disponibile.';return (r.title?r.title+'\n':'')+r.url+'\n\n'+r.text}
       if(name==='cerca_file'){const r=await SYS.call('fs.search',{q:args.testo||''});const L=(r.results||[]).slice(0,8).map(x=>x.path);return L.length?L.join('\n'):'Nessun file trovato.'}
       return 'Strumento sconosciuto.'}
+    // ---- comandi rapidi: le richieste semplici si eseguono subito, senza aspettare il "cervello"
+    const SITES={youtube:'https://www.youtube.com',gmail:'https://mail.google.com',google:'https://www.google.it',amazon:'https://www.amazon.it',facebook:'https://www.facebook.com',instagram:'https://www.instagram.com',whatsapp:'https://web.whatsapp.com',maps:'https://www.google.com/maps',mappe:'https://www.google.com/maps',wikipedia:'https://it.wikipedia.org',netflix:'https://www.netflix.com',spotify:'https://open.spotify.com',ebay:'https://www.ebay.it',chatgpt:'https://chatgpt.com',repubblica:'https://www.repubblica.it',corriere:'https://www.corriere.it'};
+    const APPN={word:['nat','word'],documento:['nat','word'],wordcraft:['nat','word'],excel:['nat','sheet'],foglio:['nat','sheet'],gridcraft:['nat','sheet'],presentazion:['nat','deck'],powerpoint:['nat','deck'],deckcraft:['nat','deck'],browser:['nat','browser'],internet:['nat','browser'],calcolatrice:['app','calc'],impostazioni:['app','settings'],file:['app','files'],esplora:['app','files'],cartell:['app','files'],note:['app','notes'],video:['nat','player']};
+    const openUrl=async url=>{const r=await SYS.call('native.open',{id:'browser',url}).catch(()=>({ok:false}));if(!r.ok&&window.openSite)window.openSite(url)};
+    const reply=(html,spoken,q)=>{add('bot',html);msgs.push({role:'assistant',content:spoken});speak(spoken)};
+    async function quick(q){
+      const t=q.toLowerCase().replace(/[?!.]+$/,'').trim();let m;
+      // YouTube: "cercami su youtube X", "metti su youtube X", "fammi vedere X su youtube"
+      if((m=t.match(/^(?:cerca(?:mi)?|metti(?:mi)?|fammi (?:vedere|sentire)|trova(?:mi)?|apri(?:mi)?)\s+(?:su youtube\s+)?(.+?)\s+su youtube$/))||(m=t.match(/^(?:cerca(?:mi)?|metti(?:mi)?|trova(?:mi)?)\s+su youtube\s+(.+)$/))){
+        const url='https://www.youtube.com/results?search_query='+encodeURIComponent(m[1]);await openUrl(url);reply(`${I('browser',18)} Ho aperto YouTube con la ricerca <b>${esc(m[1])}</b>.`,'Ecco i video di '+m[1]+' su YouTube.');return true}
+      // siti: "apri youtube", "aprimi gmail", "vai su amazon"
+      if((m=t.match(/^(?:apri(?:mi)?|vai su|portami su|mostrami)\s+(?:il sito (?:di )?)?([\w.\- ]+)$/))){const n=m[1].replace(/\s+/g,'');const k=Object.keys(SITES).find(k=>n===k||n.startsWith(k));
+        if(k||/\.[a-z]{2,}$/.test(n)){const url=k?SITES[k]:'https://'+n;await openUrl(url);reply(`${I('browser',18)} Ho aperto <b>${esc(k||n)}</b>.`,'Fatto, ho aperto '+(k||n)+'.');return true}
+        const a=Object.keys(APPN).find(k=>m[1].includes(k));if(a){const x=APPN[a];if(x[0]==='app')openApp(x[1]);else{const r=await SYS.call('native.open',{id:x[1]}).catch(()=>({ok:false}));if(!r.ok){reply('Quel programma non è installato su questo computer.','Quel programma non è installato su questo computer.');return true}}
+          reply(`Fatto: ho aperto <b>${esc(m[1])}</b>.`,'Fatto.');return true}}
+      // meteo: "che tempo fa/farà domani a roma", "meteo milano", "temperatura a napoli"
+      if(/(^|\s)(meteo|tempo fa|tempo farà|tempo fara|previsioni|temperatura|piove|pioverà|piovera)(?=\s|$)/.test(t)){
+        const day=(t.match(/(?:^|\s)(oggi|domani|dopodomani|lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica|lunedi|martedi|mercoledi|giovedi|venerdi)(?=\s|$)/)||[])[1]||'';
+        let city=(t.match(/(?:^|\s)(?:a|ad|di|per|su|in)\s+([a-zàèéìòù' ]+?)(?:\s+(?:oggi|domani|dopodomani|lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica|questa settimana|nei prossimi giorni))?$/)||[])[1]||'';
+        city=city.replace(/^(l'|la |il |lo )/,'').trim();
+        if(city&&!/^(oggi|domani|dopodomani)$/.test(city)){const note=add('tool',`${I('browser',20)} Previsioni del tempo: <b>${esc(city)}</b>`);
+          const r=await SYS.call('web.weather',{citta:city}).catch(()=>({ok:false}));if(!r.ok||!r.days){note.remove();return false}
+          const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'');let d=r.days[0],when='oggi';
+          if(day==='domani')d=r.days.find(x=>x.label==='domani')||r.days[1],when='domani';else if(day==='dopodomani')d=r.days[2],when='dopodomani';
+          else if(day&&day!=='oggi'){const f=r.days.slice(1).find(x=>norm(x.weekday)===norm(day));if(f){d=f;when=f.weekday}}
+          const now=(when==='oggi'&&r.now)?` Adesso ci sono ${r.now.temp} gradi, ${r.now.desc}.`:'';
+          const sp=`${when[0].toUpperCase()+when.slice(1)} a ${r.name}: ${d.desc}, minima ${d.min} e massima ${d.max} gradi${d.rain!=null?', probabilità di pioggia '+d.rain+' per cento':''}.${now}`;
+          const rows=r.days.map(x=>`<tr${x===d?' class="on"':''}><td>${esc(x.label||x.weekday)} ${x.date.slice(8)}/${x.date.slice(5,7)}</td><td>${esc(x.desc)}</td><td>${x.min}° / <b>${x.max}°</b></td><td>${x.rain!=null?x.rain+'%':''}</td></tr>`).join('');
+          reply(`${esc(sp)}<table class="ai-meteo">${rows}</table><small>Fonte: Open-Meteo</small>`,sp);return true}}
+      // volume e luminosità
+      if((m=t.match(/^(alza|abbassa|aumenta|diminuisci)\s+(?:il\s+|la\s+)?(volume|audio|luminosità|luce|schermo)/))){const up=/alza|aumenta/.test(m[1]);
+        if(/volume|audio/.test(m[2])){const g=await SYS.call('audio.get').catch(()=>({}));const v=Math.max(0,Math.min(100,(g.volume||50)+(up?15:-15)));await SYS.call('audio.set',{volume:v});reply(`Volume al <b>${v}%</b>.`,'Volume al '+v+' per cento.');return true}
+        const g=await SYS.call('bright.get').catch(()=>({}));const p=Math.max(5,Math.min(100,(g.percent||70)+(up?20:-20)));await SYS.call('bright.set',{percent:p});reply(`Luminosità al <b>${p}%</b>.`,'Luminosità al '+p+' per cento.');return true}
+      if((m=t.match(/(?:volume|audio)\s+(?:al|a)\s+(\d{1,3})/))){const v=Math.min(100,+m[1]);await SYS.call('audio.set',{volume:v});reply(`Volume al <b>${v}%</b>.`,'Volume al '+v+' per cento.');return true}
+      if(/^(togli|silenzia|muto)/.test(t)&&/audio|volume|muto|suono/.test(t)){await SYS.call('audio.set',{volume:0});reply('Audio spento.','');return true}
+      // ora e data
+      if(/^(che ore sono|che ora è|che ora e|dimmi l'ora)/.test(t)){const s='Sono le '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';reply(esc(s),s);return true}
+      if(/^(che giorno è|che giorno e|che giorno è oggi|che data è|quanti ne abbiamo)/.test(t)){const s='Oggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';reply(esc(s),s);return true}
+      return false}
     async function go(){const q=ta.value.trim();if(!q||busy)return;ta.value='';
       SYS.call('voice.stop').catch(()=>{});add('user',esc(q).replace(/\n/g,'<br>'));msgs.push({role:'user',content:q});
-      busy=true;send.textContent='Ferma';let tick=null,out=null;
+      busy=true;send.textContent='Ferma';
+      try{if(await quick(q)){busy=false;send.textContent='Invia';ta.focus();return}}catch(e){}
+      let tick=null,out=null,spokenUpTo=0;
       try{for(let round=0;round<8;round++){
         const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',think='',calls={},t0=performance.now(),first=false;
         clearInterval(tick);tick=setInterval(()=>{const e=$('.ai-sec',out);if(e)e.textContent=Math.round((performance.now()-t0)/1000)+' s'},1000);
@@ -1478,7 +1520,8 @@ function renderAssistant(b){
         while(true){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
           while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line.startsWith('data:'))continue;const d=line.slice(5).trim();if(d==='[DONE]')continue;
             let j;try{j=JSON.parse(d)}catch(e){continue}const dl=j.choices&&j.choices[0]&&j.choices[0].delta||{};
-            if(dl.content){text+=dl.content;const vis=text.replace(/<think>[\s\S]*?(<\/think>|$)/g,'');if(vis.trim()){out.innerHTML=mdLite(vis);log.scrollTop=log.scrollHeight}}
+            if(dl.content){text+=dl.content;const vis=text.replace(/<think>[\s\S]*?(<\/think>|$)/g,'');if(vis.trim()){out.innerHTML=mdLite(vis);log.scrollTop=log.scrollHeight}
+              if(VOICE&&!Object.keys(calls).length){const done=vis.slice(spokenUpTo);const mm=done.match(/^[\s\S]*?[.!?:](\s|\n)(?=[\s\S]{0,}$)/);const cut=done.search(/[.!?](\s)(?![\s\S]*[.!?]\s)/);if(cut>40){const piece=done.slice(0,cut+1);SYS.call('voice.say',{voice:VOICE,text:piece,append:spokenUpTo>0}).catch(()=>{});spokenUpTo+=cut+1}}}
             (dl.tool_calls||[]).forEach(tc=>{const k=tc.index||0;calls[k]=calls[k]||{id:tc.id||('c'+k),name:'',args:''};if(tc.id)calls[k].id=tc.id;if(tc.function){if(tc.function.name)calls[k].name+=tc.function.name;if(tc.function.arguments)calls[k].args+=tc.function.arguments}});
             if(dl.reasoning_content){think+=dl.reasoning_content;if(!text){if(!$('.ai-think',out))out.innerHTML=DOTS+' <small class="ai-phase ai-think">Sto ragionando… <span class="ai-sec"></span></small><div class="ai-live ai-thinklive"></div>';
               const tl=$('.ai-thinklive',out);if(tl){tl.textContent=think.slice(-600);tl.scrollTop=tl.scrollHeight}log.scrollTop=log.scrollHeight}}
@@ -1488,7 +1531,7 @@ function renderAssistant(b){
         clearInterval(tick);
         const list=Object.values(calls);
         if(!list.length){const clean=text.replace(/<think>[\s\S]*?<\/think>/g,'').trim();msgs.push({role:'assistant',content:clean});
-          out.innerHTML=mdLite(clean)||'…';thinkBox(out,think,t0);speak(clean);if(clean.length>120){const act=document.createElement('div');act.className='ai-act';act.innerHTML=`<button class="btn" data-doc>${I('m-word',16)} Crea documento Word con questo testo</button><button class="btn" data-copy>Copia</button>`;out.appendChild(act);
+          out.innerHTML=mdLite(clean)||'…';thinkBox(out,think,t0);{const rest=clean.slice(spokenUpTo).trim();if(VOICE&&rest)SYS.call('voice.say',{voice:VOICE,text:rest,append:spokenUpTo>0}).catch(()=>{});spokenUpTo=0}if(clean.length>120){const act=document.createElement('div');act.className='ai-act';act.innerHTML=`<button class="btn" data-doc>${I('m-word',16)} Crea documento Word con questo testo</button><button class="btn" data-copy>Copia</button>`;out.appendChild(act);
             $('[data-doc]',act).onclick=async()=>{const h=clean.match(/^#{1,3}\s+(.+)$/m);await runTool('crea_documento_word',{titolo:h?h[1].replace(/\*/g,'').slice(0,60):'Documento',testo:clean})};
             $('[data-copy]',act).onclick=()=>{navigator.clipboard&&navigator.clipboard.writeText(clean);toast('Testo copiato.')}}
           break}

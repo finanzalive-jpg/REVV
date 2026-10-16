@@ -141,6 +141,7 @@ def weather(a):
                                                          round(cur.get('temperature_2m', 0)), round(cur.get('wind_speed_10m', 0))))
     dy = d.get('daily') or {}
     today = datetime.date.today()
+    days = []
     for i, day in enumerate(dy.get('time', [])):
         dt = datetime.date.fromisoformat(day)
         label = 'oggi' if dt == today else 'domani' if dt == today + datetime.timedelta(days=1) else ''
@@ -149,7 +150,12 @@ def weather(a):
             _WMO.get(dy['weather_code'][i], '?'), round(dy['temperature_2m_min'][i]), round(dy['temperature_2m_max'][i]),
             dy['precipitation_probability_max'][i] if dy.get('precipitation_probability_max') else '?',
             round(dy['wind_speed_10m_max'][i])))
-    return {'ok': True, 'text': '\n'.join(lines)}
+        days.append({'date': day, 'weekday': _GIORNI[dt.weekday()], 'label': label,
+                     'desc': _WMO.get(dy['weather_code'][i], '?'), 'min': round(dy['temperature_2m_min'][i]),
+                     'max': round(dy['temperature_2m_max'][i]),
+                     'rain': dy['precipitation_probability_max'][i] if dy.get('precipitation_probability_max') else None})
+    now = {'desc': _WMO.get(cur.get('weather_code'), '?'), 'temp': round(cur.get('temperature_2m', 0))} if cur else None
+    return {'ok': True, 'text': '\n'.join(lines), 'name': c.get('name', city), 'now': now, 'days': days}
 
 
 CMDS = {'web.search': search, 'web.read': read, 'web.weather': weather}

@@ -434,7 +434,8 @@ def say(a):
         text = _clean_for_voice(a.get('text') or '')
         if text:
             try:
-                _tts_send({'say': text, 'voice': KOKORO_VOICES[v], 'speed': a.get('speed') or 1.0})
+                _tts_send({'say': text, 'voice': KOKORO_VOICES[v], 'speed': a.get('speed') or 1.0,
+                           'append': bool(a.get('append'))})
             except Exception as e:
                 _tts['proc'] = None
                 return {'ok': False, 'message': 'La voce non parte: %s' % str(e)[-200:]}
@@ -447,7 +448,8 @@ def say(a):
     text = _clean_for_voice(a.get('text') or '')
     if not text:
         return {'ok': True}
-    stop_speaking()
+    if not a.get('append'):
+        stop_speaking()
     model = os.path.join(DIR, VOICES[v][1])
     env = dict(os.environ)
     env.pop('LD_PRELOAD', None)

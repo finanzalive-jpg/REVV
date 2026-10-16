@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import wave
 
 import numpy as np
@@ -87,7 +88,7 @@ def speak(text, voice, g, speed):
             continue
         if g != gen:
             return
-        path = '/tmp/rise-voce-%d-%d.wav' % (g, i)
+        path = '/tmp/rise-voce-%d-%d-%d.wav' % (g, i, int(time.time() * 1000) % 100000)
         pcm = (np.clip(samples, -1, 1) * 32767).astype('<i2').tobytes()
         with wave.open(path, 'wb') as w:
             w.setnchannels(1)
@@ -97,17 +98,31 @@ def speak(text, voice, g, speed):
         play_q.put((g, path))
 
 
+synth_q = queue.Queue()
+
+
+def synth():
+    while True:
+        g, text, voice, speed = synth_q.get()
+        if g == gen:
+            speak(text, voice, g, speed)
+
+
 threading.Thread(target=player, daemon=True).start()
+threading.Thread(target=synth, daemon=True).start()
 print('pronto', flush=True)
 for line in sys.stdin:
     try:
         cmd = json.loads(line)
     except ValueError:
         continue
+    if cmd.get('append') and cmd.get('say'):
+        # pezzo successivo della stessa risposta: si mette in coda, senza interrompere
+        synth_q.put((gen, cmd['say'], cmd.get('voice') or 'if_sara', float(cmd.get('speed') or 1.0)))
+        continue
     with lock:
         gen += 1
         g = gen
     shut()
     if cmd.get('say'):
-        threading.Thread(target=speak, args=(cmd['say'], cmd.get('voice') or 'if_sara', g,
-                                             float(cmd.get('speed') or 1.0)), daemon=True).start()
+        synth_q.put((g, cmd['say'], cmd.get('voice') or 'if_sara', float(cmd.get('speed') or 1.0)))
