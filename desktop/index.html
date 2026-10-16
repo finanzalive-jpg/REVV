@@ -350,6 +350,8 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .ai-msg.tool{align-self:center;background:#eaf3ea;border:1px solid #b9dcb9;font-size:.92em;display:flex;align-items:center;gap:8px}
 .ai-msg .ai-h{font-size:1.08em}.ai-msg code{background:#eef2f6;padding:0 4px;border-radius:3px}
 .ai-act{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.ai-act .btn{font-size:.88em}
+.ai-dots{display:inline-flex;gap:4px;vertical-align:middle}.ai-dots i{width:7px;height:7px;border-radius:50%;background:var(--accent);opacity:.3;animation:aidot 1.2s infinite ease-in-out}.ai-dots i:nth-child(2){animation-delay:.2s}.ai-dots i:nth-child(3){animation-delay:.4s}
+@keyframes aidot{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-4px)}}
 .ai-phase{color:var(--ink-soft);display:inline-flex;align-items:center;gap:6px}.ai-live{margin-top:6px;padding:8px 10px;background:#f6f9fc;border:1px dashed var(--line);border-radius:6px;font-size:.92em;max-height:260px;overflow:auto}
 .ai-hint{margin:auto;max-width:460px;display:grid;gap:8px;text-align:center}
 .ai-chip{border:1px solid var(--line);background:#fff;border-radius:16px;padding:8px 12px;cursor:pointer;font:inherit;text-align:left}
@@ -1384,7 +1386,8 @@ function renderAssistant(b){
       add('user',esc(q).replace(/\n/g,'<br>'));msgs.push({role:'user',content:q});
       busy=true;send.textContent='Ferma';
       try{for(let round=0;round<3;round++){
-        const out=add('bot','<span class="st run"></span> <small class="ai-phase">Sto leggendo la tua richiesta…</small>');let text='',calls={},t0=performance.now(),first=false;
+        const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';const out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',calls={},t0=performance.now(),first=false;
+        const tick=setInterval(()=>{const e=$('.ai-sec',out);if(e)e.textContent=Math.round((performance.now()-t0)/1000)+' s'},1000);
         ctrl=new AbortController();
         const res=await fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},signal:ctrl.signal,
           body:JSON.stringify({messages:[{role:'system',content:AI_SYS},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:1500,chat_template_kwargs:{enable_thinking:false},cache_prompt:true})});
@@ -1394,10 +1397,11 @@ function renderAssistant(b){
             let j;try{j=JSON.parse(d)}catch(e){continue}const dl=j.choices&&j.choices[0]&&j.choices[0].delta||{};
             if(dl.content){text+=dl.content;out.innerHTML=mdLite(text.replace(/<think>[\s\S]*?(<\/think>|$)/g,''));log.scrollTop=log.scrollHeight}
             (dl.tool_calls||[]).forEach(tc=>{const k=tc.index||0;calls[k]=calls[k]||{id:tc.id||('c'+k),name:'',args:''};if(tc.id)calls[k].id=tc.id;if(tc.function){if(tc.function.name)calls[k].name+=tc.function.name;if(tc.function.arguments)calls[k].args+=tc.function.arguments}});
-            if(dl.reasoning_content&&!text)out.innerHTML='<span class="st run"></span> <small class="ai-phase">Sto ragionando…</small>';
+            if(dl.reasoning_content&&!text&&!$('.ai-think',out))out.innerHTML=DOTS+' <small class="ai-phase ai-think">Sto ragionando… <span class="ai-sec"></span></small>';
             const c0=Object.values(calls)[0];
             if(c0&&!text){const m=c0.args.match(/"testo"\s*:\s*"((?:[^"\\]|\\.)*)/);const live=m?m[1].replace(/\\n/g,'\n').replace(/\\"/g,'"').replace(/\\\\/g,'\\'):'';
-              out.innerHTML=(c0.name==='crea_documento_word'?`<small class="ai-phase">${I('m-word',16)} Scrivo il documento…</small>`:'<span class="st run"></span>')+(live?'<div class="ai-live">'+mdLite(live)+'</div>':'');log.scrollTop=log.scrollHeight}}}
+              out.innerHTML=(c0.name==='crea_documento_word'?`${DOTS} <small class="ai-phase">${I('m-word',16)} Scrivo il documento… <span class="ai-sec"></span></small>`:DOTS)+(live?'<div class="ai-live">'+mdLite(live)+'</div>':'');log.scrollTop=log.scrollHeight}}}
+        clearInterval(tick);
         const list=Object.values(calls);
         if(!list.length){const clean=text.replace(/<think>[\s\S]*?<\/think>/g,'').trim();msgs.push({role:'assistant',content:clean});
           out.innerHTML=mdLite(clean)||'…';if(clean.length>120){const act=document.createElement('div');act.className='ai-act';act.innerHTML=`<button class="btn" data-doc>${I('m-word',16)} Crea documento Word con questo testo</button><button class="btn" data-copy>Copia</button>`;out.appendChild(act);
