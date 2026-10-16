@@ -15,8 +15,16 @@ import threading
 import time
 import urllib.request
 
+import risestore
+
 HOME = os.path.expanduser('~')
-MODEL_DIR = os.path.join(HOME, '.local', 'share', 'rise', 'models')
+MODEL_DIR = os.path.join(HOME, '.local', 'share', 'rise', 'models')   # vedi _dir(): dalla chiavetta si salva lì
+
+
+def _dir():
+    global MODEL_DIR
+    MODEL_DIR, _ = risestore.data_dir('models')
+    return MODEL_DIR
 PORT = 8737
 HF = 'https://huggingface.co/{repo}/resolve/main/{file}'
 
@@ -48,7 +56,7 @@ def _live():
 
 
 def _path(mid):
-    return os.path.join(MODEL_DIR, MODELS[mid][2])
+    return os.path.join(_dir(), MODELS[mid][2])
 
 
 def _engine():
@@ -98,13 +106,14 @@ def status(_=None):
     running = bool(proc and proc.poll() is None)
     return {'engine': bool(_engine()), 'models': models, 'recommended': recommended(),
             'ramGb': round(_mem_gb(), 1), 'live': _live(), 'running': running,
+            'onUsb': risestore.data_dir('models')[1],
             'model': _srv['model'] if running else None, 'port': PORT}
 
 
 # ---------- scaricamento ----------
 def _download(mid):
     name, repo, f, gb, ram = MODELS[mid]
-    os.makedirs(MODEL_DIR, exist_ok=True)
+    d = _dir()
     dst, part = _path(mid), _path(mid) + '.part'
     st = _dl[mid]
     try:
@@ -116,8 +125,10 @@ def _download(mid):
             if have and r.status != 206:      # il server non riprende: si ricomincia
                 have = 0
             total = int(r.headers.get('Content-Length') or 0) + have
+            if risestore.too_big(d, total):
+                raise IOError('questo modello è più grande di 4 GB e non entra su una chiavetta FAT32')
             st.update(done=have, total=total)
-            with open(part, 'ab' if have else 'wb') as out:
+            with risestore.open_write(part, append=bool(have)) as out:
                 while True:
                     if st.get('cancel'):
                         raise InterruptedError('annullato')
@@ -128,13 +139,11 @@ def _download(mid):
                     st['done'] += len(buf)
         if st['total'] and st['done'] < st['total']:
             raise IOError('scaricamento interrotto')
-        os.replace(part, dst)
+        risestore.replace(part, dst)
+        risestore.sync()
     except InterruptedError:
         st['error'] = None
-        try:
-            os.remove(part)
-        except OSError:
-            pass
+        risestore.remove(part)
     except Exception as e:
         st['error'] = 'Non riesco a scaricare il modello. Controlla la connessione e riprova. (%s)' % e
     finally:
@@ -148,7 +157,7 @@ def download(a):
     with _lock:
         if (_dl.get(mid) or {}).get('running'):
             return {'ok': True}
-        free = shutil.disk_usage(os.path.dirname(MODEL_DIR) if os.path.isdir(os.path.dirname(MODEL_DIR)) else HOME).free / 1e9
+        free = shutil.disk_usage(_dir()).free / 1e9
         if free < MODELS[mid][3] + 0.3:
             return {'ok': False, 'message': 'Non c’è abbastanza spazio (servono circa %.1f GB).' % MODELS[mid][3]}
         _dl[mid] = {'running': True, 'done': 0, 'total': 0, 'error': None, 'cancel': False}
@@ -170,10 +179,7 @@ def delete(a):
     if _srv['model'] == mid:
         stop()
     for p in (_path(mid), _path(mid) + '.part'):
-        try:
-            os.remove(p)
-        except OSError:
-            pass
+        risestore.remove(p)
     return {'ok': True}
 
 

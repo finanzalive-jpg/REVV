@@ -15,8 +15,10 @@ import threading
 import time
 import urllib.request
 
+import risestore
+
 HOME = os.path.expanduser('~')
-DIR = os.path.join(HOME, '.local', 'share', 'rise', 'voce')
+DIR = risestore.data_dir('voce')[0]      # dalla chiavetta: salvata sulla chiavetta, si scarica una volta sola
 HF = 'https://huggingface.co/'
 WAV_IN = '/tmp/rise-microfono.wav'
 WAV_OUT = '/tmp/rise-voce.wav'
@@ -104,7 +106,7 @@ def status(_=None):
 def _fetch(url, dst):
     part = dst + '.part'
     req = urllib.request.Request(url, headers={'User-Agent': 'Rise/0.5'})
-    with urllib.request.urlopen(req, timeout=30) as r, open(part, 'wb') as out:
+    with urllib.request.urlopen(req, timeout=30) as r, risestore.open_write(part) as out:
         _dl['total'] += int(r.headers.get('Content-Length') or 0)
         while True:
             buf = r.read(1 << 18)
@@ -112,12 +114,11 @@ def _fetch(url, dst):
                 break
             out.write(buf)
             _dl['done'] += len(buf)
-    os.replace(part, dst)
+    risestore.replace(part, dst)
 
 
 def _setup(voice):
     try:
-        os.makedirs(DIR, exist_ok=True)
         jobs = []
         if not _have_stt():
             f, url, _ = STT[_stt_id()]
@@ -131,6 +132,7 @@ def _setup(voice):
         for url, f in jobs:
             _dl['what'] = f
             _fetch(url, os.path.join(DIR, f))
+        risestore.sync()
     except Exception as e:
         _dl['error'] = 'Non riesco a scaricare la voce. Controlla la connessione e riprova. (%s)' % e
     finally:

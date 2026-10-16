@@ -1369,7 +1369,7 @@ function renderAssistant(b){
     body.innerHTML=`<div class="ai-setup"><div class="ai-hero">${I('assistant',56)}<div><h2>Assistente</h2><p class="lead">Fai domande, scrivi lettere e preventivi, cerca su internet, apri programmi, parlagli a voce. Il cervello gira sul tuo computer: i tuoi dati non vanno a nessuno.</p></div></div>
       <p class="ai-step">Per cominciare scarica il “cervello” dell'Assistente (si fa una volta sola). Più è grande, più è bravo, ma serve più memoria. Questo computer ha ${String(ST.ramGb).replace('.',',')} GB.</p>
       <div class="ai-models">${rows}</div>
-      ${ST.live?'<p class="note">Stai usando Rise dalla chiavetta: il modello scaricato resta finché non spegni il computer.</p>':''}
+      ${ST.live?(ST.onUsb?'<p class="note">Stai usando Rise dalla chiavetta: i modelli si salvano sulla chiavetta (cartella “rise-dati”), così li scarichi una volta sola.</p>':'<p class="note">Stai usando Rise dalla chiavetta: questa chiavetta è di sola lettura, quindi il modello resta finché non spegni il computer.</p>'):''}
       <p class="note">Modelli Qwen3.5 (Alibaba, licenza Apache 2.0) · motore llama.cpp (MIT).</p></div>`;
     $$('[data-dl]',body).forEach(x=>x.onclick=async()=>{const r=await SYS.call('ai.download',{model:x.dataset.dl});if(!r.ok){toast(r.message,true);return}await refresh();setup()});
     $$('[data-cancel]',body).forEach(x=>x.onclick=async()=>{await SYS.call('ai.cancel',{model:x.dataset.cancel});setTimeout(async()=>{await refresh();setup()},600)});
