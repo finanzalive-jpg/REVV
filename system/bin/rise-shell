@@ -187,6 +187,7 @@ class Rise(Gtk.Application):
     def make_window(self, name, uri, win):
         view = WebKit.WebView()
         view.set_background_color(Gdk.RGBA(0, 0, 0, 0))
+        view.set_zoom_level(1.0)
         s = view.get_settings()
         s.set_allow_file_access_from_file_urls(True)
         s.set_allow_universal_access_from_file_urls(True)
@@ -299,6 +300,28 @@ class Rise(Gtk.Application):
             return None, None
         seat = Gdk.Display.get_default().get_default_seat()
         return w, seat.get_pointer() if seat else None
+
+    def win_fit(self, a, name):
+        # la finestra si adatta al suo contenuto (serve sugli schermi dove i caratteri escono più grandi)
+        w = self.windows.get(name)
+        if not w:
+            return {'ok': False}
+        cw, ch = max(1.0, float(a.get('curW', 1))), max(1.0, float(a.get('curH', 1)))
+        gw, gh = w.get_width() or int(cw), w.get_height() or int(ch)
+        nw, nh = int(a.get('needW', cw) * gw / cw + 0.99), int(a.get('needH', ch) * gh / ch + 0.99)
+        mon = None
+        try:
+            surf = w.get_surface()
+            mon = Gdk.Display.get_default().get_monitor_at_surface(surf) if surf else None
+        except Exception:
+            pass
+        if mon:
+            g = mon.get_geometry()
+            nw, nh = min(nw, g.width - 8), min(nh, g.height - BAR_H - 8)
+        print('rise-size fit', name, gw, gh, '->', nw, nh, flush=True)
+        if nw > gw or nh > gh:
+            w.set_default_size(max(nw, gw), max(nh, gh))
+        return {'ok': True}
 
     def win_move(self, a, name):
         w, dev = self._surface_args(name, a)
@@ -444,7 +467,7 @@ class Rise(Gtk.Application):
 
 UI_CMDS = {
     'app.open': Rise.app_open, 'win.move': Rise.win_move, 'win.resize': Rise.win_resize,
-    'win.state': Rise.win_state, 'popup.show': Rise.popup_show, 'popup.hide': Rise.popup_hide,
+    'win.state': Rise.win_state, 'win.fit': Rise.win_fit, 'popup.show': Rise.popup_show, 'popup.hide': Rise.popup_hide,
     'native.list': Rise.native_list, 'native.open': Rise.native_open, 'top.action': Rise.top_action,
     'state.changed': Rise.state_changed, 'shell.info': Rise.info, 'drop': Rise.drop_cmd,
     'open.with': Rise.open_with,

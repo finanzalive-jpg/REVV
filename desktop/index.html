@@ -586,11 +586,11 @@ function apply(){
 
 /* ================= App ================= */
 const APPS={
- welcome:{name:'Benvenuto',ic:'orb',desc:'Cos\'è Rise e cosa cambia rispetto al solito',w:860,h:670,render:renderWelcome},
+ welcome:{name:'Benvenuto',ic:'orb',fit:1,desc:'Cos\'è Rise e cosa cambia rispetto al solito',w:860,h:670,render:renderWelcome},
  files:{name:'Esplora file',ic:'files',desc:'Sfoglia le cartelle del tuo computer',w:760,h:470,render:renderFiles},
  viewer:{name:'Visualizzatore',ic:'viewer',desc:'Apre foto, video, musica, PDF, Word, Excel e testo',w:800,h:560,render:renderViewer},
  notes:{name:'Note',ic:'notes',desc:'Scrivi appunti veloci, si salvano da soli',w:480,h:420,render:renderNotes},
- calc:{name:'Calcolatrice',ic:'calc',desc:'Somme, percentuali e conti al volo',w:300,h:440,render:renderCalc},
+ calc:{name:'Calcolatrice',ic:'calc',fit:1,desc:'Somme, percentuali e conti al volo',w:300,h:440,render:renderCalc},
  settings:{name:'Impostazioni',ic:'settings',desc:'Schermo, rete, audio e tutto il resto, in un posto solo',w:840,h:580,render:renderSettings}
 };
 const DESK=[['computer','Questo computer',()=>openApp('files',{goto:'pc:'})],['f-docs','Documenti',()=>openApp('files',{goto:NATIVE?'fs:~/Documenti':'ex:Documenti'})],['viewer','Visualizzatore',()=>openApp('viewer')],['notes','Note',()=>openApp('notes')],['settings','Impostazioni',()=>openApp('settings')],['orb','Benvenuto',()=>openApp('welcome')],['trash','Cestino',()=>openApp('files',{goto:NATIVE?'trash:':'ex:Cestino'})]];
@@ -1325,6 +1325,10 @@ apply();renderTasks();
 if(!MW)openApp('welcome');
 else if(ROLE==='desktop'){let first=true;try{first=!sessionStorage.getItem('rise.w');sessionStorage.setItem('rise.w','1')}catch(e){}if(first){setTimeout(()=>openApp('welcome'),400);bootBadge()}}
 else if(ROLE==='app'&&APPS[APP_ID]){openApp(APP_ID,GOTO!=null?{goto:GOTO}:{});W[APP_ID].el.classList.add('appwin')}
+// finestre a misura fissa (calcolatrice, benvenuto…): se il contenuto non ci sta, la finestra si allarga
+if(NATIVE&&ROLE==='app'&&APPS[APP_ID]&&APPS[APP_ID].fit)setTimeout(()=>{const b=$('.wbody',W[APP_ID].el);if(!b)return;
+  const extraH=innerHeight-b.clientHeight,extraW=innerWidth-b.clientWidth,needH=b.scrollHeight+extraH,needW=b.scrollWidth+extraW;
+  if(needH>innerHeight+2||needW>innerWidth+2)SYS.call('win.fit',{needW,needH,curW:innerWidth,curH:innerHeight}).catch(()=>{})},350);
 if(NATIVE&&APP_ID==='files')SYS.call('sys.live').then(r=>{LIVE_SYS=!!(r&&r.live)}).catch(()=>{});
 if(NATIVE)SYS.call('bright.get').then(r=>{LIVE.backlight=r.available;if(r.available&&(!MW||ROLE==='panel'||APP_ID==='settings'))S.bright=r.percent;apply();refreshSettings('schermo',true)}).catch(()=>{});
 if(MW&&(ROLE==='popup'||ROLE==='panel'))SYS.call('native.list').then(l=>{NAPPS=l||[]}).catch(()=>{});

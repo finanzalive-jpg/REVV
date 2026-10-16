@@ -115,23 +115,126 @@ class Drop:
             if hasattr(socket, 'SO_REUSEPORT'):
                 self.udp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             self.udp.bind(('', PORT))
-            self.udp.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
-                                struct.pack('4s4s', socket.inet_aton(GROUP), socket.inet_aton('0.0.0.0')))
             self.udp.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+            self.joined = set()
+            self._join()   # se la rete non c'è ancora, ci si aggancia dopo (vedi _watch)
         except Exception as e:
             self.on_event({'type': 'error', 'message': 'Rise Drop non può partire: %s' % e})
             return False
         self.running = True
         threading.Thread(target=self._listen, daemon=True).start()
         threading.Thread(target=self._announcer, daemon=True).start()
+        threading.Thread(target=self._watch, daemon=True).start()
         return True
+
+    # ---------- rete: ci si aggancia a ogni scheda appena ha un indirizzo ----------
+    @staticmethod
+    def _addrs():
+        try:
+            out = subprocess.run(['ip', '-4', '-o', 'addr', 'show', 'scope', 'global'],
+                                 capture_output=True, text=True, timeout=5).stdout
+        except Exception:
+            out = ''
+        res = []
+        if not out:   # senza il comando "ip": indirizzo principale, rete /24
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as t:
+                    t.connect(('10.255.255.255', 1))
+                    ip = t.getsockname()[0]
+                if not ip.startswith('127.'):
+                    res.append((ip, 24))
+            except OSError:
+                pass
+            return res
+        for l in out.splitlines():
+            f = l.split()
+            if 'inet' in f:
+                ip, plen = f[f.index('inet') + 1].split('/')
+                res.append((ip, int(plen)))
+        return res
+
+    def _join(self):
+        now = {ip for ip, _ in self._addrs()}
+        new = now - self.joined
+        for ip in new:
+            try:
+                self.udp.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                                    struct.pack('4s4s', socket.inet_aton(GROUP), socket.inet_aton(ip)))
+            except OSError:
+                pass
+        self.joined = now
+        return bool(new)
+
+    def _watch(self):
+        while True:
+            time.sleep(5)
+            try:
+                if self._join():           # nuova rete (es. Wi‑Fi appena collegato): ci si presenta subito
+                    for d in (0, 1, 3):
+                        time.sleep(d)
+                        self.announce()
+                    threading.Thread(target=self.http_scan, daemon=True).start()
+            except Exception:
+                pass
+
+    def http_scan(self):
+        """Ricerca di riserva (come fa LocalSend): chiede a ogni indirizzo della rete locale chi è.
+        Serve quando il router blocca i messaggi a tutti (multicast)."""
+        targets = []
+        for ip, plen in self._addrs():
+            if plen < 22:                  # reti troppo grandi: si guarda solo il /24 vicino
+                plen = 24
+            base = struct.unpack('!I', socket.inet_aton(ip))[0]
+            mask = (0xFFFFFFFF << (32 - plen)) & 0xFFFFFFFF
+            net = base & mask
+            for h in range(1, min(2 ** (32 - plen) - 1, 1024)):
+                t = socket.inet_ntoa(struct.pack('!I', net | h))
+                if t != ip:
+                    targets.append(t)
+        body = json.dumps(self.info()).encode()
+
+        def probe(t):
+            try:
+                with socket.create_connection((t, PORT), timeout=0.4):
+                    pass
+            except OSError:
+                return
+            for proto in ('https', 'http'):
+                try:
+                    st, data = self._request(t, PORT, proto, 'POST', API + '/register', body, timeout=3)
+                    if st == 200:
+                        msg = json.loads(data.decode('utf-8', 'replace'))
+                        if isinstance(msg, dict):
+                            msg.setdefault('port', PORT)
+                            msg.setdefault('protocol', proto)
+                            self._add_device(msg, t)
+                        return
+                except Exception:
+                    continue
+
+        threads = []
+        for t in targets:
+            th = threading.Thread(target=probe, args=(t,), daemon=True)
+            th.start()
+            threads.append(th)
+            if len(threads) >= 64:
+                for x in threads:
+                    x.join()
+                threads = []
+        for x in threads:
+            x.join()
 
     # ---------- scoperta ----------
     def announce(self):
-        try:
-            self.udp.sendto(json.dumps(self.info(True)).encode(), (GROUP, PORT))
-        except OSError:
-            pass
+        data = json.dumps(self.info(True)).encode()
+        ips = [ip for ip, _ in self._addrs()] or [None]
+        for ip in ips:
+            try:
+                if ip:
+                    self.udp.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(ip))
+                self.udp.sendto(data, (GROUP, PORT))
+            except OSError:
+                pass
 
     def _announcer(self):
         for delay in (0, 1, 3, 8):     # all'avvio la rete può non essere ancora pronta
@@ -193,7 +296,9 @@ class Drop:
                           key=lambda d: d['alias'].lower())
 
     def scan(self):
+        self._join()
         self.announce()
+        threading.Thread(target=self.http_scan, daemon=True).start()
         return self.list_devices()
 
     # ---------- ricezione ----------
