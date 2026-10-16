@@ -3,6 +3,14 @@ title-text: ""
 desktop-image: "bg.png"
 desktop-color: "#03060f"
 message-color: "#cfe8f5"
+# la finestra di testo di GRUB (messaggi all'avvio): trasparente e ridotta a una striscia in basso,
+# così non copre il logo quando si sceglie una voce
+terminal-box: "term_*.png"
+terminal-left: "0"
+terminal-top: "92%"
+terminal-width: "100%"
+terminal-height: "8%"
+terminal-border: "0"
 
 + image {
   left = 50%-150

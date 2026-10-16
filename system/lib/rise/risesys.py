@@ -522,7 +522,10 @@ def fs_search(a):
         return {'ok': True, 'results': []}
     roots = [HOME, '/media', '/mnt']
     res = []
-    rc, out, _ = run(['plocate', '-i', '-l', '400', '--', q], timeout=10)
+    dbs = [d for d in [INDEX_DB] + [INDEX_DB + '.%d' % i for i in (1, 2)] if os.path.exists(d)]
+    rc, out = 1, ''
+    if dbs:
+        rc, out, _ = run(['plocate', '-i', '-l', '400', '-d', ':'.join(dbs), '--', q], timeout=10)
     if rc == 0 or out:
         for p in out.splitlines():
             if not any(p == r or p.startswith(r + '/') for r in roots):
@@ -551,8 +554,17 @@ def fs_search(a):
     return {'ok': True, 'results': items}
 
 
+INDEX_DB = os.path.join(HOME, '.cache', 'rise', 'file.db')
+
+
 def index_update(_):
-    rc, _, err = root(['nice', '-n', '19', 'ionice', '-c3', 'updatedb'], timeout=600)
+    # Indicizza SOLO le cartelle dell'utente (non tutto il sistema): leggero anche dalla chiavetta.
+    os.makedirs(os.path.dirname(INDEX_DB), exist_ok=True)
+    rc = 0
+    for i, r in enumerate([HOME] + [d for d in ('/media', '/mnt') if os.path.isdir(d) and os.listdir(d)]):
+        db = INDEX_DB if i == 0 else INDEX_DB + '.%d' % i
+        rc |= run(['nice', '-n', '19', 'ionice', '-c3', 'updatedb', '-l', '0', '-U', r, '-o', db,
+                   '--prunenames', '.git .cache node_modules __pycache__ .local'], timeout=300)[0]
     return {'ok': rc == 0}
 
 
@@ -711,7 +723,75 @@ def kbd_set(a):
     rc = run(['labwc', '--reconfigure'])[0]
     return {'ok': rc == 0}
 
-CMDS = {'kbd.set': kbd_set, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
+
+# ---------------- Programmi (.deb) ----------------
+def is_live(_=None):
+    return {'live': os.path.exists('/run/casper') or os.path.exists('/cdrom/casper')}
+
+
+def pkg_install(a):
+    path = os.path.abspath(a.get('path') or '')
+    if not path.endswith('.deb') or not os.path.isfile(path):
+        return {'ok': False, 'message': 'File non valido.'}
+    env = ['env', 'DEBIAN_FRONTEND=noninteractive']
+    # aggiorna l'elenco dei pacchetti (sulla chiavetta è vuoto) per poter scaricare le dipendenze
+    rc, out, err = sudo(env + ['apt-get', 'update', '-qq'], 300)
+    if rc != 0 and 'Could not resolve' in (err + out):
+        return {'ok': False, 'message': 'Serve internet per installare: collegati al Wi‑Fi e riprova.'}
+    rc, out, err = sudo(env + ['apt-get', 'install', '-y', '-qq', path], 1200)
+    if rc == 0:
+        return {'ok': True, 'apps': register_apps(run(['dpkg-deb', '-f', path, 'Package'])[1].strip())}
+    msg = (err or out).strip().splitlines()
+    tail = msg[-1] if msg else ''
+    if 'Unable to locate' in tail or 'Depends' in (err + out):
+        return {'ok': False, 'message': 'Mancano dei componenti che non riesco a scaricare. Controlla la connessione e riprova.'}
+    if 'Could not get lock' in (err + out):
+        return {'ok': False, 'message': 'Un\u2019altra installazione è in corso. Riprova tra un minuto.'}
+    return {'ok': False, 'message': 'Installazione non riuscita: ' + tail[:200]}
+
+
+APPS_FILE = os.path.join(HOME, '.config', 'rise', 'apps.json')
+
+
+def extra_apps():
+    try:
+        return json.load(open(APPS_FILE))
+    except Exception:
+        return []
+
+
+def register_apps(pkg):
+    """Aggiunge al menu Start i programmi (file .desktop) contenuti nel pacchetto appena installato."""
+    if not pkg:
+        return []
+    _, out, _ = run(['dpkg', '-L', pkg])
+    found = []
+    for f in out.splitlines():
+        if not (f.startswith('/usr/share/applications/') and f.endswith('.desktop')):
+            continue
+        d = {}
+        try:
+            sec = None
+            for l in open(f, errors='replace'):
+                l = l.strip()
+                if l.startswith('['):
+                    sec = l
+                elif sec == '[Desktop Entry]' and '=' in l:
+                    k, v = l.split('=', 1)
+                    d.setdefault(k, v)
+        except OSError:
+            continue
+        if d.get('NoDisplay') == 'true' or not d.get('Exec'):
+            continue
+        cmd = [x for x in d['Exec'].split() if not x.startswith('%')]
+        found.append({'id': 'pkg:' + os.path.basename(f)[:-8], 'name': d.get('Name', pkg),
+                      'desc': d.get('Comment', 'Programma installato'), 'cmd': cmd})
+    apps = [x for x in extra_apps() if x['id'] not in {y['id'] for y in found}] + found
+    os.makedirs(os.path.dirname(APPS_FILE), exist_ok=True)
+    json.dump(apps, open(APPS_FILE, 'w'))
+    return found
+
+CMDS = {'kbd.set': kbd_set, 'pkg.install': pkg_install, 'sys.live': is_live, 'net.status': net_status, 'net.scan': net_scan, 'net.connect': net_connect, 'net.radio': net_radio,
         'net.diag': net_diag, 'audio.get': audio_get, 'audio.set': audio_set, 'bright.get': bright_get,
         'bright.set': bright_set, 'power': power, 'sys.info': sys_info, 'fs.roots': fs_roots,
         'fs.mount': fs_mount, 'fs.list': fs_list, 'fs.read': fs_read,

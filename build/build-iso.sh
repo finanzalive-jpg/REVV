@@ -90,6 +90,10 @@ chroot "$CH" sh -c '
   systemctl disable getty@tty1.service >/dev/null 2>&1 || true
   systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1 || true
   systemctl enable smbd nmbd rise-wsdd avahi-daemon >/dev/null 2>&1 || true
+  # lavori pesanti in background che dalla chiavetta bloccherebbero il computer per minuti
+  for t in plocate-updatedb.timer man-db.timer apt-daily.timer apt-daily-upgrade.timer fwupd-refresh.timer motd-news.timer e2scrub_all.timer; do
+    systemctl mask "$t" >/dev/null 2>&1 || true
+  done
   systemctl set-default graphical.target >/dev/null 2>&1'
 # condivisione cartelle (Samba): le cartelle scelte in Esplora file finiscono in rise-shares.conf
 if [ -f "$CH/etc/samba/smb.conf" ] && ! grep -q rise-shares "$CH/etc/samba/smb.conf"; then

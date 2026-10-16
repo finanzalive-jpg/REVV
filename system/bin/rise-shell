@@ -358,12 +358,15 @@ class Rise(Gtk.Application):
         return {'ok': True}
 
     # ---------------- programmi veri ----------------
+    def all_native(self):
+        return NATIVE + [x for x in risesys.extra_apps() if x.get('cmd')]
+
     def native_list(self, _a=None, _name=None):
-        return [dict(n, installed=bool(shutil.which(n['cmd'][0]))) for n in NATIVE]
+        return [dict(n, installed=bool(shutil.which(n['cmd'][0]))) for n in self.all_native()]
 
     def native_open(self, a, _name=None):
         nid = a.get('id')
-        app = next((n for n in NATIVE if n['id'] == nid), None)
+        app = next((n for n in self.all_native() if n['id'] == nid), None)
         cmd = list(app['cmd']) if app else None
         if not cmd or not shutil.which(cmd[0]):
             return {'ok': False, 'message': 'Programma non installato.'}

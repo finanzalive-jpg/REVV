@@ -565,7 +565,7 @@ const QS=new URLSearchParams(location.search),ROLE=NATIVE?(QS.get('role')||'full
 const APP_ID=QS.get('app');let GOTO=null;try{GOTO=QS.get('goto')?JSON.parse(QS.get('goto')):null}catch(e){}
 document.documentElement.dataset.role=ROLE;
 if(MW)addEventListener('load',()=>console.log('rise-size',ROLE,innerWidth+'x'+innerHeight,'dpr',devicePixelRatio));
-let NAPPS=[];  // programmi veri installati (browser, Office, lettore video)
+let NAPPS=[],LIVE_SYS=false;  // programmi veri installati (browser, Office, lettore video)
 let SYNCING=false;
 let LASTSYNC='';
 const shareState=debounce(()=>{if(!MW||SYNCING)return;const j=JSON.stringify(S);if(j===LASTSYNC)return;LASTSYNC=j;SYS.call('state.changed',{state:S}).catch(()=>{})},150);
@@ -697,7 +697,7 @@ $$('.dicon').forEach(b=>b.addEventListener('click',()=>DESK[b.dataset.i][2]()));
 /* ================= Menu Start ================= */
 const startEl=$('#start'),q=$('#q'),orb=$('#orb');
 function closePops(keep){$$('.drop-card').forEach(x=>{if(!keep&&x.querySelector('[data-y]')&&x.textContent.includes('vuole inviarti'))x.querySelector('[data-n]').click();x.remove()});startEl.hidden=true;$('#quick').hidden=true;orb.setAttribute('aria-expanded','false');if(ROLE==='popup'&&!keep)SYS.call('popup.hide').catch(()=>{})}
-function openStart(){startEl.hidden=false;orb.setAttribute('aria-expanded','true');q.value='';renderStart();setTimeout(()=>q.focus(),30)}
+function openStart(){if(MW&&NATIVE)SYS.call('native.list').then(l=>{NAPPS=l||[];if(!startEl.hidden)renderStart()}).catch(()=>{});startEl.hidden=false;orb.setAttribute('aria-expanded','true');q.value='';renderStart();setTimeout(()=>q.focus(),30)}
 window.__risePopup=(k,data)=>{closePops(true);$$('.drop-card').forEach(x=>x.remove());if(k==='quick')openQuick();else if(k==='drop')dropAsk(data);else if(k==='dropdone')dropDone(data);else openStart()};
 function dropCard(html){const c=document.createElement('div');c.className='pop drop-card';c.innerHTML=html;c.onclick=e=>e.stopPropagation();document.body.appendChild(c);return c}
 function dropAsk(r){const c=dropCard(`<div class="dc-head">${I('net',40)}<div><b>${esc(r.from)}</b> vuole inviarti ${r.count===1?'un file':r.count+' file'}<br><small>${fsize(r.size)} · arriveranno nella cartella Download</small></div></div>
@@ -722,7 +722,7 @@ function renderStart(){
              ...SETS.filter(s=>norm(s.label+' '+s.k+' '+s.desc).includes(v)).map(s=>({t:'set',s}))];
     $('#st-label').textContent='Risultati'}
   $('#st-list').innerHTML=results.length?results.map((r,i)=>r.t==='nat'
-    ?`<button class="st-item${i===0&&v?' sel':''}" data-i="${i}">${I(NICON[r.n.id]||'computer',34)}<span><b>${esc(r.n.name)}</b><small>${esc(r.n.desc)}</small></span></button>`
+    ?`<button class="st-item${i===0&&v?' sel':''}" data-i="${i}">${I(NICON[r.n.id]||(/chrom|firefox|brave|opera|edge/i.test(r.n.id)?'browser':'computer'),34)}<span><b>${esc(r.n.name)}</b><small>${esc(r.n.desc)}</small></span></button>`
     :r.t==='app'
     ?`<button class="st-item${i===0&&v?' sel':''}" data-i="${i}">${I(APPS[r.id].ic,34)}<span><b>${APPS[r.id].name}</b><small>${APPS[r.id].desc}</small></span></button>`
     :`<button class="st-item${i===0?' sel':''}" data-i="${i}">${I(SECTIONS.find(x=>x.id===r.s.sec).ic,34)}<span><b>${r.s.label}</b><small>${r.s.desc}</small></span><span class="st-kind">Impostazione</span></button>`).join('')
@@ -829,6 +829,7 @@ function renderFiles(b,opts){
   const toast=(m,bad)=>{let t=$('.fx-toast',b);if(!t){t=document.createElement('div');t.className='fx-toast';b.appendChild(t)}t.textContent=m;t.classList.toggle('bad',!!bad);t.hidden=false;clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,3500)};
   const OFFICE=/\.(docx?|odt|rtf|xlsx?|ods|pptx?|odp|mp4|mkv|avi|mov|webm|m4v|mpg|mpeg|wmv|flv|mp3|flac|ogg|wav|m4a|aac|opus)$/i;
   function openPath(path,f){
+    if(NATIVE&&/\.deb$/i.test(path)){installDialog(path,f);return}
     if(OFFICE.test(path)){SYS.call('open.with',{path}).then(r=>{if(!r||!r.ok)openApp('viewer',{goto:{native:true,path,name:f.name,size:f.size,lastModified:f.mtime}})});return}
     openApp('viewer',{goto:{native:true,path,name:f.name,size:f.size,lastModified:f.mtime}})}
   function tools(kind){
@@ -885,6 +886,19 @@ function renderFiles(b,opts){
     try{const r=await SYS.call('drop',{action:'scan'});if(!r.ok){$('.dd-list',m).innerHTML=`<p class="fx-info">${esc(r.message)}</p>`;return}paint(r.devices);
       let n=0;const t=setInterval(async()=>{if(!m.isConnected||++n>20){clearInterval(t);return}const r2=await SYS.call('drop',{action:'devices'});if($('.dd-dev,.dd-list .fx-info',m)&&!$('.dd-prog',m))paint(r2.devices)},2500)}catch(e){}
   }
+  function installDialog(path,f){
+    const name=(f&&f.name)||path.split('/').pop();
+    const m=modal(`<h3>${I('m-deb',26)}Installare “${esc(name)}”?</h3>
+      <p class="lead">È un programma per Ubuntu/Debian. Rise lo installa e scarica da internet quello che gli serve.</p>
+      <p class="note">Installa solo programmi che vengono da siti di cui ti fidi.${LIVE_SYS?' Stai usando Rise dalla chiavetta: il programma resta finché non spegni il computer.':''}</p>
+      <div class="inst-st" hidden><span class="st run"></span> <span class="inst-msg">Installo… (può volerci qualche minuto)</span></div>
+      <div class="dd-foot"><button class="btn primary" data-inst>Installa</button><button class="btn" data-x>Annulla</button></div>`);
+    $('[data-x]',m).onclick=()=>m.remove();
+    $('[data-inst]',m).onclick=async()=>{const go=$('[data-inst]',m),st=$('.inst-st',m);go.disabled=true;$('[data-x]',m).disabled=true;st.hidden=false;
+      let r;try{r=await SYS.call('pkg.install',{path})}catch(e){r={ok:false,message:e.message}}
+      $('.st',st).className='st '+(r.ok?'done':'fail');$('.inst-msg',st).textContent=r.ok?'Installato! Lo trovi nel menu Start.':r.message;
+      $('[data-x]',m).disabled=false;$('[data-x]',m).textContent='Chiudi';go.remove();
+      if(r.ok)SYS.call('native.list').then(l=>{NAPPS=l||[]}).catch(()=>{})}}
   async function shareDialog(path){
     let r;try{r=await SYS.call('share.list')}catch(e){r={shares:[]}}const ex=(r.shares||[]).find(x=>x.path===path);const name=path.split('/').pop()||path;
     const m=modal(`<h3>${I('folder',26)}Condividi “${esc(name)}” in rete</h3>${ex?`<div class="status ok"><span class="dot">✓</span><div><b>Già condivisa come “${esc(ex.name)}”</b><br><small>Dagli altri PC: <code>\\\\${esc(r.host)}\\${esc(ex.name)}</code></small></div></div>`:
@@ -1311,6 +1325,7 @@ apply();renderTasks();
 if(!MW)openApp('welcome');
 else if(ROLE==='desktop'){let first=true;try{first=!sessionStorage.getItem('rise.w');sessionStorage.setItem('rise.w','1')}catch(e){}if(first){setTimeout(()=>openApp('welcome'),400);bootBadge()}}
 else if(ROLE==='app'&&APPS[APP_ID]){openApp(APP_ID,GOTO!=null?{goto:GOTO}:{});W[APP_ID].el.classList.add('appwin')}
+if(NATIVE&&APP_ID==='files')SYS.call('sys.live').then(r=>{LIVE_SYS=!!(r&&r.live)}).catch(()=>{});
 if(NATIVE)SYS.call('bright.get').then(r=>{LIVE.backlight=r.available;if(r.available&&(!MW||ROLE==='panel'||APP_ID==='settings'))S.bright=r.percent;apply();refreshSettings('schermo',true)}).catch(()=>{});
 if(MW&&(ROLE==='popup'||ROLE==='panel'))SYS.call('native.list').then(l=>{NAPPS=l||[]}).catch(()=>{});
 if(NATIVE&&(!MW||ROLE==='panel'||ROLE==='popup'||APP_ID==='settings')){
