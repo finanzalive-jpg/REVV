@@ -171,7 +171,7 @@ Ubuntu 26.04 LTS      Linux kernel, drivers, firmware, NetworkManager, PipeWire
 On Ubuntu 24.04 or newer, with about 15 GB free:
 
 ```sh
-git clone https://github.com/finanzalive-jpg/REVV
+git clone https://github.com/finanzalive-jpg/RISE
 cd rise
 sudo ./build/build-iso.sh 0.3
 ```

@@ -10,6 +10,6 @@ This is an early preview of Rise: a lightweight Linux operating system with a cl
 Nothing is written to your disk. Requirements: 64-bit processor (2010 or newer), 4 GB RAM. If Secure Boot is on, turn it off for now.
 
 ### Please report
-Tell us how it ran on your hardware: [open an issue](https://github.com/finanzalive-jpg/REVV/issues/new) with the PC model, what worked and what did not.
+Tell us how it ran on your hardware: [open an issue](https://github.com/finanzalive-jpg/RISE/issues/new) with the PC model, what worked and what did not.
 
 Check the download with the `.sha256` file: `sha256sum -c rise-<version>-live-amd64.iso.sha256`.
