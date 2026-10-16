@@ -79,7 +79,7 @@ def read(a):
     except Exception as e:
         return {'ok': False, 'message': 'Non riesco ad aprire la pagina. (%s)' % e}
     if 'html' not in ctype and '<html' not in page[:500].lower():
-        return {'ok': True, 'url': final, 'title': '', 'text': page[:8000]}
+        return {'ok': True, 'url': final, 'title': '', 'text': page[:3500]}
     t = re.search(r'<title[^>]*>([\s\S]*?)</title>', page, re.I)
     body = re.sub(r'(?is)<(script|style|noscript|svg|nav|footer|header|form|aside|iframe)[^>]*>.*?</\1>', ' ', page)
     body = re.sub(r'(?i)<(br|/p|/div|/li|/h[1-6]|/tr|/section|/article)[^>]*>', '\n', body)
@@ -89,7 +89,56 @@ def read(a):
     lines = [l for l in lines if len(l) > 2]
     out = '\n'.join(lines)
     out = re.sub(r'\n{3,}', '\n\n', out)
-    return {'ok': True, 'url': final, 'title': _text(t.group(1)) if t else '', 'text': out[:8000]}
+    return {'ok': True, 'url': final, 'title': _text(t.group(1)) if t else '', 'text': out[:3500]}
 
 
-CMDS = {'web.search': search, 'web.read': read}
+_WMO = {0: 'sereno', 1: 'quasi sereno', 2: 'poco nuvoloso', 3: 'nuvoloso', 45: 'nebbia', 48: 'nebbia gelata',
+        51: 'pioggerella debole', 53: 'pioggerella', 55: 'pioggerella intensa', 61: 'pioggia debole', 63: 'pioggia',
+        65: 'pioggia forte', 66: 'pioggia gelata', 67: 'pioggia gelata forte', 71: 'neve debole', 73: 'neve',
+        75: 'neve forte', 77: 'nevischio', 80: 'rovesci deboli', 81: 'rovesci', 82: 'rovesci forti',
+        85: 'rovesci di neve', 86: 'forti rovesci di neve', 95: 'temporale', 96: 'temporale con grandine',
+        99: 'forte temporale con grandine'}
+_GIORNI = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica']
+
+
+def weather(a):
+    """Previsioni del tempo da Open-Meteo (gratis, senza account): dati veri, in un secondo."""
+    import json
+    import datetime
+    city = (a.get('citta') or a.get('city') or '').strip()
+    if not city:
+        return {'ok': False, 'message': 'Per quale città?'}
+    try:
+        g, _, _ = _get('https://geocoding-api.open-meteo.com/v1/search?' +
+                       urllib.parse.urlencode({'name': city, 'count': 1, 'language': 'it', 'format': 'json'}))
+        res = (json.loads(g).get('results') or [])
+        if not res:
+            return {'ok': False, 'message': 'Non trovo la città “%s”.' % city}
+        c = res[0]
+        q = {'latitude': c['latitude'], 'longitude': c['longitude'], 'timezone': 'auto', 'forecast_days': 7,
+             'current': 'temperature_2m,weather_code,wind_speed_10m',
+             'daily': 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max'}
+        f, _, _ = _get('https://api.open-meteo.com/v1/forecast?' + urllib.parse.urlencode(q))
+        d = json.loads(f)
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco a leggere le previsioni: controlla la connessione. (%s)' % e}
+    name = c.get('name', city) + (', ' + c['admin1'] if c.get('admin1') else '')
+    lines = ['Previsioni per %s (fonte: Open-Meteo)' % name]
+    cur = d.get('current') or {}
+    if cur:
+        lines.append('Adesso: %s, %s °C, vento %s km/h' % (_WMO.get(cur.get('weather_code'), '?'),
+                                                         round(cur.get('temperature_2m', 0)), round(cur.get('wind_speed_10m', 0))))
+    dy = d.get('daily') or {}
+    today = datetime.date.today()
+    for i, day in enumerate(dy.get('time', [])):
+        dt = datetime.date.fromisoformat(day)
+        label = 'oggi' if dt == today else 'domani' if dt == today + datetime.timedelta(days=1) else ''
+        lines.append('%s %d/%d%s: %s, min %s °C, max %s °C, pioggia %s%%, vento fino a %s km/h' % (
+            _GIORNI[dt.weekday()], dt.day, dt.month, ' (%s)' % label if label else '',
+            _WMO.get(dy['weather_code'][i], '?'), round(dy['temperature_2m_min'][i]), round(dy['temperature_2m_max'][i]),
+            dy['precipitation_probability_max'][i] if dy.get('precipitation_probability_max') else '?',
+            round(dy['wind_speed_10m_max'][i])))
+    return {'ok': True, 'text': '\n'.join(lines)}
+
+
+CMDS = {'web.search': search, 'web.read': read, 'web.weather': weather}

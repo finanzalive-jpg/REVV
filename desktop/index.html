@@ -1331,7 +1331,7 @@ function renderSettings(b,opts){
 
 /* ================= Assistente (IA sul computer) ================= */
 const AI_SYS_TXT=`Sei l'Assistente di Rise, il sistema operativo di questo computer. Rispondi in italiano, in modo chiaro e preciso. Ragiona con calma prima di rispondere.
-Hai accesso a internet: per notizie, prezzi, orari, meteo, persone, prodotti o qualsiasi cosa che può essere cambiata di recente usa cerca_web e poi leggi_pagina sulle fonti migliori; alla fine indica i siti usati.
+Per il meteo usa SEMPRE lo strumento meteo (dati veri e immediati). Hai accesso a internet: per notizie, prezzi, orari, persone, prodotti o qualsiasi cosa che può essere cambiata di recente usa cerca_web e poi leggi_pagina sulle fonti migliori; alla fine indica i siti usati. Se le pagine non contengono l'informazione, dillo: non inventare mai dati.
 Per un preventivo usa SEMPRE crea_preventivo: passa azienda, cliente, oggetto e le voci con quantità e prezzo unitario; i totali e l'IVA li calcola Rise. Non inventare nomi, indirizzi o prezzi: se mancano il cliente o i prezzi chiedili prima, in una sola domanda.
 Per lettere e altri documenti usa crea_documento_word con un testo completo e curato, senza segnaposto tra parentesi quadre (titoli con #, elenchi con -, tabelle con |).
 Per aprire programmi usa apri_programma. Per trovare file del computer usa cerca_file.`;
@@ -1343,6 +1343,7 @@ const AI_TOOLS=[
    azienda:{type:'string',description:'Chi fa il preventivo: nome, indirizzo, partita IVA (vuoto = quella usata l’ultima volta)'},cliente:{type:'string',description:'Nome e indirizzo del cliente'},oggetto:{type:'string',description:'Di cosa si tratta, in breve'},
    voci:{type:'array',items:{type:'object',properties:{descrizione:{type:'string'},quantita:{type:'number'},prezzo:{type:'number',description:'Prezzo unitario in euro, senza IVA'}},required:['descrizione','prezzo']}},
    iva:{type:'number',description:'Percentuale IVA, di solito 22'},note:{type:'string'},pagamento:{type:'string'},validita:{type:'string'}},required:['cliente','voci']}}},
+ {type:'function',function:{name:'meteo',description:'Previsioni del tempo di una città: oggi, domani e i prossimi 7 giorni',parameters:{type:'object',properties:{citta:{type:'string'}},required:['citta']}}},
  {type:'function',function:{name:'cerca_web',description:'Cerca su internet e restituisce i primi risultati (titolo, indirizzo, riassunto)',parameters:{type:'object',properties:{testo:{type:'string',description:'Cosa cercare'}},required:['testo']}}},
  {type:'function',function:{name:'leggi_pagina',description:'Scarica una pagina web e ne restituisce il testo',parameters:{type:'object',properties:{url:{type:'string'}},required:['url']}}},
  {type:'function',function:{name:'cerca_file',description:'Cerca file nel computer per nome',parameters:{type:'object',properties:{testo:{type:'string'}},required:['testo']}}}];
@@ -1396,7 +1397,7 @@ function renderAssistant(b){
     const log=$('.ai-log',body),ta=$('textarea',body),send=$('[data-send]',body);
     $('[data-new]',body).onclick=()=>{if(ctrl)ctrl.abort();msgs=[];log.innerHTML='';hello();ta.focus()};
     $('[data-models]',body).onclick=async()=>{if(ctrl)ctrl.abort();await refresh();setup()};
-    const hello=()=>{if(!msgs.length)log.innerHTML=`<div class="ai-hint"><b>Cosa posso fare?</b>${['Scrivimi un preventivo per l’installazione di 3 condizionatori','Che tempo farà domani a Milano?','Scrivi una lettera di disdetta della palestra','Come faccio a condividere una cartella con un altro PC?'].map(t=>`<button class="ai-chip">${t}</button>`).join('')}</div>`;
+    const hello=()=>{if(!msgs.length)log.innerHTML=`<div class="ai-hint"><b>Cosa posso fare?</b>${['Scrivimi un preventivo per l’installazione di 3 condizionatori','Che tempo farà domani a Roma?','Scrivi una lettera di disdetta della palestra','Come faccio a condividere una cartella con un altro PC?'].map(t=>`<button class="ai-chip">${t}</button>`).join('')}</div>`;
       $$('.ai-chip',log).forEach(c=>c.onclick=()=>{ta.value=c.textContent;go()})};
     hello();
     const add=(role,html)=>{const h=$('.ai-hint',log);if(h)h.remove();const d=document.createElement('div');d.className='ai-msg '+role;d.innerHTML=html;log.appendChild(d);log.scrollTop=log.scrollHeight;return d};
@@ -1449,6 +1450,7 @@ function renderAssistant(b){
       if(name==='crea_preventivo'){const r=await SYS.call('doc.preventivo',args||{});
         if(!r.ok)return 'Non sono riuscito a creare il preventivo.';SYS.call('open.with',{path:r.path}).catch(()=>{});
         add('tool',`${I('m-word',20)} Ho creato <b>${esc(r.name)}</b> (totale ${esc(r.totale||'')}) nella cartella Documenti e l'ho aperto.`);return 'Creato e aperto: '+r.name+', totale '+(r.totale||'')}
+      if(name==='meteo'){add('tool',`${I('browser',20)} Previsioni del tempo: <b>${esc(args.citta||'')}</b>`);const r=await SYS.call('web.weather',{citta:args.citta||''});return r.ok?r.text:(r.message||'Previsioni non disponibili.')}
       if(name==='cerca_web'){add('tool',`${I('browser',20)} Cerco su internet: <b>${esc(args.testo||'')}</b>`);const r=await SYS.call('web.search',{q:args.testo||''});
         if(!r.ok)return r.message||'Ricerca non riuscita.';return (r.results||[]).map((x,i)=>`${i+1}. ${x.title}\n${x.url}\n${x.snippet}`).join('\n\n')||'Nessun risultato.'}
       if(name==='leggi_pagina'){let host='';try{host=new URL(/^https?:/.test(args.url)?args.url:'https://'+args.url).hostname}catch(e){}add('tool',`${I('browser',20)} Leggo <b>${esc(host||args.url||'')}</b>`);
@@ -1485,7 +1487,7 @@ function renderAssistant(b){
         if(text.trim()){out.innerHTML=mdLite(text.replace(/<think>[\s\S]*?<\/think>/g,'').trim());thinkBox(out,think,t0)}else out.remove();
         msgs.push({role:'assistant',content:text||'',tool_calls:list.map(c=>({id:c.id,type:'function',function:{name:c.name,arguments:c.args||'{}'}}))});
         let needMore=false;
-        for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(/^(cerca_file|cerca_web|leggi_pagina)$/.test(c.name))needMore=true}
+        for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(/^(cerca_file|cerca_web|leggi_pagina|meteo)$/.test(c.name))needMore=true}
         if(!needMore){const done=list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
           msgs.push({role:'assistant',content:done});add('bot',esc(done));speak(done);break}}
       }catch(e){if(e.name==='AbortError'){if(out&&$('.ai-dots',out))out.innerHTML='<small class="ai-phase">Interrotto.</small>'}else add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
