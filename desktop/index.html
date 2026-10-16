@@ -1334,7 +1334,7 @@ const AI_SYS_TXT=`Sei l'Assistente di Rise, il sistema operativo di questo compu
 Per il meteo usa SEMPRE lo strumento meteo (dati veri e immediati). Hai accesso a internet: per notizie, prezzi, orari, persone, prodotti o qualsiasi cosa che può essere cambiata di recente usa cerca_web e poi leggi_pagina sulle fonti migliori; alla fine indica i siti usati. Se le pagine non contengono l'informazione, dillo: non inventare mai dati.
 Per un preventivo usa SEMPRE crea_preventivo: passa azienda, cliente, oggetto e le voci con quantità e prezzo unitario; i totali e l'IVA li calcola Rise. Non inventare nomi, indirizzi o prezzi: se mancano il cliente o i prezzi chiedili prima, in una sola domanda.
 Per lettere e altri documenti usa crea_documento_word con un testo completo e curato, senza segnaposto tra parentesi quadre (titoli con #, elenchi con -, tabelle con |).
-Per aprire programmi usa apri_programma. Per trovare file del computer usa cerca_file.`;
+Per aprire programmi usa apri_programma; per aprire un sito (YouTube, Gmail…) o cercare un video usa apri_sito. Per trovare file del computer usa cerca_file.`;
 const AI_SYS=()=>AI_SYS_TXT+'\nOggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';
 const AI_TOOLS=[
  {type:'function',function:{name:'apri_programma',description:'Apre un programma del computer',parameters:{type:'object',properties:{nome:{type:'string',enum:['internet','word','excel','presentazioni','file','impostazioni','calcolatrice','note','video']}},required:['nome']}}},
@@ -1343,6 +1343,7 @@ const AI_TOOLS=[
    azienda:{type:'string',description:'Chi fa il preventivo: nome, indirizzo, partita IVA (vuoto = quella usata l’ultima volta)'},cliente:{type:'string',description:'Nome e indirizzo del cliente'},oggetto:{type:'string',description:'Di cosa si tratta, in breve'},
    voci:{type:'array',items:{type:'object',properties:{descrizione:{type:'string'},quantita:{type:'number'},prezzo:{type:'number',description:'Prezzo unitario in euro, senza IVA'}},required:['descrizione','prezzo']}},
    iva:{type:'number',description:'Percentuale IVA, di solito 22'},note:{type:'string'},pagamento:{type:'string'},validita:{type:'string'}},required:['cliente','voci']}}},
+ {type:'function',function:{name:'apri_sito',description:'Apre un sito nel browser (YouTube, Google, Gmail, Amazon, un indirizzo web) o una ricerca su YouTube',parameters:{type:'object',properties:{sito:{type:'string',description:'Nome del sito o indirizzo, es. youtube, gmail, www.repubblica.it'},cerca:{type:'string',description:'Cosa cercare nel sito, se richiesto (es. video da cercare su YouTube)'}},required:['sito']}}},
  {type:'function',function:{name:'meteo',description:'Previsioni del tempo di una città: oggi, domani e i prossimi 7 giorni',parameters:{type:'object',properties:{citta:{type:'string'}},required:['citta']}}},
  {type:'function',function:{name:'cerca_web',description:'Cerca su internet e restituisce i primi risultati (titolo, indirizzo, riassunto)',parameters:{type:'object',properties:{testo:{type:'string',description:'Cosa cercare'}},required:['testo']}}},
  {type:'function',function:{name:'leggi_pagina',description:'Scarica una pagina web e ne restituisce il testo',parameters:{type:'object',properties:{url:{type:'string'}},required:['url']}}},
@@ -1450,6 +1451,12 @@ function renderAssistant(b){
       if(name==='crea_preventivo'){const r=await SYS.call('doc.preventivo',args||{});
         if(!r.ok)return 'Non sono riuscito a creare il preventivo.';SYS.call('open.with',{path:r.path}).catch(()=>{});
         add('tool',`${I('m-word',20)} Ho creato <b>${esc(r.name)}</b> (totale ${esc(r.totale||'')}) nella cartella Documenti e l'ho aperto.`);return 'Creato e aperto: '+r.name+', totale '+(r.totale||'')}
+      if(name==='apri_sito'){const n=(args.sito||'').toLowerCase().trim(),q=(args.cerca||'').trim();
+        const known={youtube:'https://www.youtube.com',google:'https://www.google.it',gmail:'https://mail.google.com',amazon:'https://www.amazon.it',facebook:'https://www.facebook.com',instagram:'https://www.instagram.com',whatsapp:'https://web.whatsapp.com',maps:'https://www.google.com/maps',wikipedia:'https://it.wikipedia.org',netflix:'https://www.netflix.com',spotify:'https://open.spotify.com',ebay:'https://www.ebay.it'};
+        const key=Object.keys(known).find(k=>n.includes(k));let url=key?known[key]:(/^https?:/.test(n)?n:'https://'+n.replace(/\s+/g,''));
+        if(q){if(key==='youtube')url='https://www.youtube.com/results?search_query='+encodeURIComponent(q);else if(key==='amazon')url='https://www.amazon.it/s?k='+encodeURIComponent(q);else if(key==='maps')url='https://www.google.com/maps/search/'+encodeURIComponent(q);else if(!key||key==='google')url='https://www.google.it/search?q='+encodeURIComponent(q)}
+        const r=await SYS.call('native.open',{id:'browser',url}).catch(()=>({ok:false}));if(!r.ok&&window.openSite)window.openSite(url);
+        add('tool',`${I('browser',20)} Apro <b>${esc(url.replace(/^https?:\/\//,'').slice(0,60))}</b>`);return 'Aperto '+url}
       if(name==='meteo'){add('tool',`${I('browser',20)} Previsioni del tempo: <b>${esc(args.citta||'')}</b>`);const r=await SYS.call('web.weather',{citta:args.citta||''});return r.ok?r.text:(r.message||'Previsioni non disponibili.')}
       if(name==='cerca_web'){add('tool',`${I('browser',20)} Cerco su internet: <b>${esc(args.testo||'')}</b>`);const r=await SYS.call('web.search',{q:args.testo||''});
         if(!r.ok)return r.message||'Ricerca non riuscita.';return (r.results||[]).map((x,i)=>`${i+1}. ${x.title}\n${x.url}\n${x.snippet}`).join('\n\n')||'Nessun risultato.'}
@@ -1488,7 +1495,7 @@ function renderAssistant(b){
         msgs.push({role:'assistant',content:text||'',tool_calls:list.map(c=>({id:c.id,type:'function',function:{name:c.name,arguments:c.args||'{}'}}))});
         let needMore=false;
         for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(/^(cerca_file|cerca_web|leggi_pagina|meteo)$/.test(c.name))needMore=true}
-        if(!needMore){const done=list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
+        if(!needMore){const done=list.some(c=>c.name==='apri_sito')?'Fatto, l’ho aperto nel browser.':list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
           msgs.push({role:'assistant',content:done});add('bot',esc(done));speak(done);break}}
       }catch(e){if(e.name==='AbortError'){if(out&&$('.ai-dots',out))out.innerHTML='<small class="ai-phase">Interrotto.</small>'}else add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
       clearInterval(tick);
