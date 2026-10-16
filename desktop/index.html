@@ -1364,7 +1364,7 @@ function renderAssistant(b){
     const rows=ST.models.map(m=>{const rec=m.id===ST.recommended,pct=m.total?Math.round(m.done/m.total*100):0;
       return `<div class="ai-model${rec?' rec':''}" data-m="${m.id}"><div><b>${esc(m.name)}${rec?' <span class="tag">Consigliato per questo PC</span>':''}</b>
         <small>Scarica circa ${String(m.gb).replace('.',',')} GB · adatto a PC con ${m.ram} GB di memoria o più${m.error?` · <span class="err">${esc(m.error)}</span>`:''}</small>
-        ${m.downloading?`<div class="meter"><i style="width:${pct}%"></i></div><small>${m.total?fmt(m.done)+' di '+fmt(m.total)+' · '+pct+'%':'Mi collego…'}</small>`:''}</div>
+        ${m.downloading?`<div class="meter"><i style="width:${pct}%"></i></div><small>${m.phase==='split'?'Lo salvo sulla chiavetta in più pezzi (ci vuole qualche minuto)…':m.total?fmt(m.done)+' di '+fmt(m.total)+' · '+pct+'%':'Mi collego…'}</small>`:''}</div>
         <div>${m.have?`<button class="btn primary" data-use="${m.id}">Usa</button> <button class="btn" data-del="${m.id}">Elimina</button>`:m.downloading?`<button class="btn" data-cancel="${m.id}">Annulla</button>`:`<button class="btn${rec?' primary':''}" data-dl="${m.id}">Scarica</button>`}</div></div>`}).join('');
     body.innerHTML=`<div class="ai-setup"><div class="ai-hero">${I('assistant',56)}<div><h2>Assistente</h2><p class="lead">Fai domande, scrivi lettere e preventivi, cerca su internet, apri programmi, parlagli a voce. Il cervello gira sul tuo computer: i tuoi dati non vanno a nessuno.</p></div></div>
       <p class="ai-step">Per cominciare scarica il “cervello” dell'Assistente (si fa una volta sola). Più è grande, più è bravo, ma serve più memoria. Questo computer ha ${String(ST.ramGb).replace('.',',')} GB.</p>

@@ -59,6 +59,29 @@ def _path(mid):
     return os.path.join(_dir(), MODELS[mid][2])
 
 
+def _split_first(mid):
+    """Modello diviso in pezzi (per le chiavette FAT32, che non accettano file oltre 4 GB)."""
+    base = os.path.join(_dir(), MODELS[mid][2][:-5])
+    for n in range(2, 6):
+        p = '%s-00001-of-%05d.gguf' % (base, n)
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _model_file(mid):
+    p = _path(mid)
+    return p if os.path.exists(p) else _split_first(mid)
+
+
+def _splitter():
+    for n in ('llama-gguf-split', '/opt/llama/llama-gguf-split', '/usr/libexec/llama.cpp/llama-gguf-split'):
+        p = shutil.which(n) or (n if os.path.isfile(n) and os.access(n, os.X_OK) else None)
+        if p:
+            return p
+    return None
+
+
 def _engine():
     for name in ('llama-server', '/usr/libexec/llama.cpp/llama-server', '/usr/lib/llama.cpp/llama-server'):
         p = shutil.which(name) or (name if os.path.isfile(name) and os.access(name, os.X_OK) else None)
@@ -89,7 +112,7 @@ def recommended():
     ram = _mem_gb() - (1.5 if _live() else 0)
     best = '0.8b'
     for mid in ('0.8b', '2b', '4b', '9b'):
-        if ram >= MODELS[mid][4]:
+        if ram >= MODELS[mid][4] and (MODELS[mid][3] < 3.9 or not risestore.too_big(_dir(), 5e9) or _splitter()):
             best = mid
     return best
 
@@ -100,8 +123,8 @@ def status(_=None):
         p = _path(mid)
         d = _dl.get(mid) or {}
         models.append({'id': mid, 'name': name, 'gb': gb, 'ram': ram,
-                       'have': os.path.exists(p), 'downloading': bool(d.get('running')),
-                       'done': d.get('done', 0), 'total': d.get('total', 0), 'error': d.get('error')})
+                       'have': bool(_model_file(mid)), 'downloading': bool(d.get('running')),
+                       'done': d.get('done', 0), 'total': d.get('total', 0), 'error': d.get('error'), 'phase': d.get('phase')})
     proc = _srv['proc']
     running = bool(proc and proc.poll() is None)
     return {'engine': bool(_engine()), 'models': models, 'recommended': recommended(),
@@ -126,7 +149,12 @@ def _download(mid):
                 have = 0
             total = int(r.headers.get('Content-Length') or 0) + have
             if risestore.too_big(d, total):
-                raise IOError('questo modello è più grande di 4 GB e non entra su una chiavetta FAT32')
+                if not _splitter():
+                    raise IOError('questo modello è più grande di 4 GB e non entra su una chiavetta FAT32')
+                if have:                       # si ricomincia nella memoria del computer
+                    risestore.remove(part)
+                    raise IOError('riprova: lo scarico in un altro modo')
+                return _download_split(mid, r, total, st)
             st.update(done=have, total=total)
             with risestore.open_write(part, append=bool(have)) as out:
                 while True:
@@ -148,6 +176,41 @@ def _download(mid):
         st['error'] = 'Non riesco a scaricare il modello. Controlla la connessione e riprova. (%s)' % e
     finally:
         st['running'] = False
+
+
+def _download_split(mid, r, total, st):
+    """FAT32: si scarica in memoria e si salva sulla chiavetta in pezzi da 3,5 GB (llama.cpp li legge insieme)."""
+    import tempfile
+    tmpd = tempfile.mkdtemp(prefix='rise-modello-', dir=os.path.join(HOME, '.cache') if os.path.isdir(os.path.join(HOME, '.cache')) else None)
+    tmp = os.path.join(tmpd, MODELS[mid][2])
+    try:
+        if shutil.disk_usage(tmpd).free < total + 2e8:
+            raise IOError('serve più memoria libera per preparare questo modello')
+        st.update(done=0, total=total)
+        with open(tmp, 'wb') as out:
+            while True:
+                if st.get('cancel'):
+                    raise InterruptedError('annullato')
+                buf = r.read(1 << 20)
+                if not buf:
+                    break
+                out.write(buf)
+                st['done'] += len(buf)
+        if st['done'] < total:
+            raise IOError('scaricamento interrotto')
+        st['phase'] = 'split'
+        dst = _path(mid)[:-5]
+        rc = subprocess.run(['sudo', '-n', _splitter(), '--split', '--split-max-size', '3500M', tmp, dst],
+                            capture_output=True, timeout=3600).returncode
+        if rc != 0 or not _split_first(mid):
+            rc = subprocess.run([_splitter(), '--split', '--split-max-size', '3500M', tmp, dst],
+                                capture_output=True, timeout=3600).returncode
+        if not _split_first(mid):
+            raise IOError('non riesco a salvarlo sulla chiavetta')
+        risestore.sync()
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+        st.pop('phase', None)
 
 
 def download(a):
@@ -178,7 +241,8 @@ def delete(a):
         return {'ok': False}
     if _srv['model'] == mid:
         stop()
-    for p in (_path(mid), _path(mid) + '.part'):
+    import glob
+    for p in [_path(mid), _path(mid) + '.part'] + glob.glob(_path(mid)[:-5] + '-0000*-of-0000*.gguf'):
         risestore.remove(p)
     return {'ok': True}
 
@@ -194,7 +258,7 @@ def _healthy(timeout=1.0):
 
 def start(a):
     mid = a.get('model') or recommended()
-    if mid not in MODELS or not os.path.exists(_path(mid)):
+    if mid not in MODELS or not _model_file(mid):
         return {'ok': False, 'message': 'Il modello non è ancora stato scaricato.'}
     eng = _engine()
     if not eng:
@@ -208,7 +272,7 @@ def start(a):
         # Pieno regime: ragionamento acceso, contesto ampio, impostazioni consigliate da Qwen
         # per la modalità "thinking" (temperatura 0.6, top-p 0.95, top-k 20).
         ctx = '32768' if mid in ('4b', '9b') else '16384'
-        cmd = [eng, '-m', _path(mid), '--host', '127.0.0.1', '--port', str(PORT),
+        cmd = [eng, '-m', _model_file(mid), '--host', '127.0.0.1', '--port', str(PORT),
                '-c', ctx, '-t', str(threads), '--jinja',
                '--temp', '0.6', '--top-p', '0.95', '--top-k', '20', '--min-p', '0',
                '--presence-penalty', '1.5', '--no-webui', '--cache-reuse', '256']
@@ -237,7 +301,7 @@ def start(a):
 
 def _start_plain(eng, mid):
     """Versioni di llama-server che non conoscono qualche opzione: si riparte con quelle essenziali."""
-    cmd = [eng, '-m', _path(mid), '--host', '127.0.0.1', '--port', str(PORT), '-c', '4096', '--jinja']
+    cmd = [eng, '-m', _model_file(mid), '--host', '127.0.0.1', '--port', str(PORT), '-c', '4096', '--jinja']
     log = open('/tmp/rise-assistente.log', 'a')
     env = dict(os.environ)
     env.pop('LD_PRELOAD', None)

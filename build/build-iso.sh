@@ -84,10 +84,9 @@ done
 rm -rf "$CH/tmp/craft"
 
 log "3c/9 Motore dell'Assistente (llama.cpp)"
-if chroot "$CH" sh -c 'command -v llama-server' >/dev/null 2>&1; then
-  echo "llama-server: $(chroot "$CH" sh -c 'command -v llama-server')"
-else
-  # riserva: versione ufficiale per Linux x64 (CPU) dal progetto llama.cpp
+# Dal pacchetto Ubuntu arriva llama-server; dalla versione ufficiale si prendono gli strumenti che mancano
+# (llama-gguf-split serve a dividere i modelli oltre 4 GB per le chiavette FAT32).
+if ! chroot "$CH" sh -c 'command -v llama-server && command -v llama-gguf-split' >/dev/null 2>&1; then
   url="$(curl -fsSL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} https://api.github.com/repos/ggml-org/llama.cpp/releases/latest 2>/dev/null \
     | python3 -c 'import json,sys,re; d=json.load(sys.stdin); print(next((a["browser_download_url"] for a in d.get("assets",[]) if re.search(r"bin-ubuntu-x64\.(zip|tar\.gz)$", a["name"])), ""))' 2>/dev/null || true)"
   if [ -n "$url" ]; then
@@ -96,14 +95,34 @@ else
     d="$(dirname "$(find /tmp/llama-dl/x -name llama-server -type f | head -1)")"
     if [ -n "$d" ] && [ -d "$d" ]; then
       cp -a "$d"/. "$CH/opt/llama/"
-      printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/llama${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\nexec /opt/llama/llama-server "$@"\n' > "$CH/usr/local/bin/llama-server"
-      chmod +x "$CH/usr/local/bin/llama-server"; echo "llama-server: versione ufficiale da $url"
+      for t in llama-server llama-gguf-split; do
+        if ! chroot "$CH" sh -c "command -v $t" >/dev/null 2>&1 && [ -x "$CH/opt/llama/$t" ]; then
+          printf '#!/bin/sh\nexport LD_LIBRARY_PATH=/opt/llama${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}\nexec /opt/llama/%s "$@"\n' "$t" > "$CH/usr/local/bin/$t"
+          chmod +x "$CH/usr/local/bin/$t"
+        fi
+      done
+      echo "llama.cpp ufficiale da $url"
     fi
     rm -rf /tmp/llama-dl
-  else
-    echo "ATTENZIONE: llama-server non disponibile, l'Assistente non funzionerà"
   fi
 fi
+for t in llama-server llama-gguf-split whisper-cli; do echo "$t: $(chroot "$CH" sh -c "command -v $t" || echo 'MANCANTE')"; done
+
+log "3d/9 Voce dell'Assistente (Kokoro: voci italiane naturali; Piper di riserva)"
+if chroot "$CH" python3 -m venv /opt/kokoro && chroot "$CH" /opt/kokoro/bin/pip install -q --no-cache-dir kokoro-onnx; then
+  chroot "$CH" /opt/kokoro/bin/python -c 'import kokoro_onnx, onnxruntime; print("kokoro ok, onnxruntime", onnxruntime.__version__)' || echo "ATTENZIONE: Kokoro non funziona"
+  find "$CH/opt/kokoro" -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+else
+  echo "ATTENZIONE: Kokoro non installato, la voce userà Piper"; rm -rf "$CH/opt/kokoro"
+fi
+PURL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
+mkdir -p /tmp/piper-dl
+if curl -fsSL -o /tmp/piper-dl/p.tgz "$PURL" && tar xzf /tmp/piper-dl/p.tgz -C /tmp/piper-dl; then
+  rm -rf "$CH/opt/piper"; cp -a /tmp/piper-dl/piper "$CH/opt/piper"; echo "piper: ok"
+else
+  echo "ATTENZIONE: Piper non disponibile"
+fi
+rm -rf /tmp/piper-dl
 
 log "4/9 Desktop di Rise (offline: caratteri e lettori di file inclusi)"
 D="$CH/opt/rise"; mkdir -p "$D/fonts" "$D/lib"
