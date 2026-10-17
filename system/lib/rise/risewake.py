@@ -22,7 +22,7 @@ from vosk import KaldiRecognizer, Model, SetLogLevel
 
 SetLogLevel(-1)
 RATE = 16000
-PREFIX = ('ehi', 'ciao', 'ok', 'hey', 'senti')
+PREFIX = ('ehi', 'ei', 'e', 'hey', 'ciao', 'ok', 'senti')
 
 
 def norm(s):
@@ -33,7 +33,7 @@ def norm(s):
 def main():
     model = Model(sys.argv[1])
     names = {k: norm(v) for k, v in json.loads(sys.argv[2]).items() if norm(v)}
-    phrases = sorted({'%s %s' % (p, n) for n in names.values() for p in PREFIX})
+    phrases = sorted({'%s %s' % (p, n) for n in names.values() for p in PREFIX} | set(names.values()))
     rec = KaldiRecognizer(model, RATE, json.dumps(phrases + ['[unk]'], ensure_ascii=False))
     # si passa da PipeWire (parec), che usa il microfono scelto dal sistema; arecord diretto su ALSA
     # su molti portatili prende l'ingresso cuffie invece del microfono interno
@@ -72,7 +72,8 @@ def main():
             continue
         if paused:
             continue
-        if rec.AcceptWaveform(data):
+        final = rec.AcceptWaveform(data)
+        if final:
             text = json.loads(rec.Result()).get('text', '')
             if text:
                 print('sentito:', text, file=sys.stderr, flush=True)
@@ -80,14 +81,19 @@ def main():
             text = json.loads(rec.PartialResult()).get('partial', '')
         if not text or time.time() - last < 2.5:
             continue
-        who = heard(norm(text).split(), names)
+        who = heard(norm(text).split(), names, final=final)
         if who:
             last = time.time()
             rec.Reset()
             print(json.dumps({'wake': who}), flush=True)
 
 
-def heard(words, names):
+def heard(words, names, final=False):
+    # il nome detto da solo, come frase a sé (dopo una pausa), vale anche lui
+    if final:
+        for who, n in names.items():
+            if ' '.join(words) == n:
+                return who
     for i, w in enumerate(words[:-1]):
         if w in PREFIX:
             for who, n in names.items():
