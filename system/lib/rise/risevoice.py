@@ -208,7 +208,7 @@ def listen_start(_=None):
 
 
 def _watch_silence(proc):
-    """Ferma la registrazione da solo quando, dopo aver parlato, si resta in silenzio per un secondo e mezzo."""
+    """Ferma la registrazione da solo quando, dopo aver parlato, si resta in silenzio per quasi un secondo."""
     import array
     import math
     pos, noise, spoke, quiet, t0 = 44, None, False, 0.0, time.time()
@@ -238,7 +238,7 @@ def _watch_silence(proc):
                 if not spoke:
                     noise = noise * 0.9 + rms * 0.1     # si adatta al rumore di fondo
                 quiet += 0.2
-        if (spoke and quiet >= 1.5) or time.time() - t0 > 30 or (not spoke and time.time() - t0 > 12):
+        if (spoke and quiet >= 0.9) or time.time() - t0 > 30 or (not spoke and time.time() - t0 > 12):
             _rec['auto'] = True
             _stop_rec_proc(proc)
             return
@@ -330,19 +330,29 @@ def listen_stop(_=None):
     if not voice:
         return {'ok': False, 'message': 'Non ho sentito la tua voce. Parla un po’ più forte o più vicino al computer.'}
     threads = str(max(1, min(8, (os.cpu_count() or 2))))
+    try:
+        secs = os.path.getsize(voice) / 32000.0
+    except OSError:
+        secs = 10
     cmd = [_whisper(), '-m', os.path.join(DIR, STT[_stt_id()][0]), '-f', voice, '-l', 'it',
-           '-t', threads, '-nt', '-np', '-bs', '5', '-mc', '0', '-sns']
+           '-t', threads, '-nt', '-np', '-bs', '2', '-bo', '2', '-mc', '0', '-sns']
+    if secs < 13:
+        # frase breve: si analizzano solo i secondi che servono invece di 30 (circa 2 volte più veloce)
+        cmd += ['-ac', str(min(1500, int((secs + 2) * 50) // 64 * 64 + 64))]
+    t_stt = time.time()
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
         if r.returncode != 0 and 'unknown' in (r.stderr or '').lower():      # versioni senza qualche opzione
             r = subprocess.run(cmd[:cmd.index('-bs')], capture_output=True, text=True, timeout=180)
+        elif r.returncode == 0 and '-ac' in cmd and not r.stdout.strip():    # frase tagliata: si rifà intera
+            r = subprocess.run(cmd[:cmd.index('-ac')], capture_output=True, text=True, timeout=180)
     except subprocess.TimeoutExpired:
         return {'ok': False, 'message': 'Ci ho messo troppo a capire. Riprova con una frase più corta.'}
     text = ' '.join(l.strip() for l in r.stdout.splitlines() if l.strip())
     text = re.sub(r'\[[^\]]*\]|\([^)]*\)', '', text).strip()      # [musica], (rumore)…
     if not text or _hallucinated(text):
         return {'ok': False, 'message': 'Non ho capito bene. Riprova parlando un po’ più vicino al microfono.'}
-    return {'ok': True, 'text': text}
+    return {'ok': True, 'text': text, 'sttSec': round(time.time() - t_stt, 1)}
 
 
 # ---------- voce ----------
@@ -396,7 +406,7 @@ def _tts_proc():
                     except ValueError:
                         continue
                     if 'env' in m:
-                        _lip.update(env=m['env'], step=m.get('step', 40) / 1000.0, t0=time.time(), seq=_lip.get('seq', 0) + 1)
+                        _lip.update(env=m['env'], step=m.get('step', 20) / 1000.0, t0=time.time() + LIP_DELAY, seq=_lip.get('seq', 0) + 1)
                     elif m.get('end'):
                         _lip.update(env=[], t0=0)
         except Exception:
@@ -513,7 +523,8 @@ def shutdown(_=None):
     return {'ok': True}
 
 
-_lip = {'env': [], 'step': 0.04, 't0': 0}
+_lip = {'env': [], 'step': 0.02, 't0': 0}
+LIP_DELAY = 0.12        # il lettore audio impiega circa un decimo di secondo prima che il suono esca dalle casse
 
 
 def level(_=None):
@@ -658,8 +669,18 @@ def wake_config(a):
         os.makedirs(os.path.dirname(WAKE_CONF), exist_ok=True)
         json.dump(c, open(WAKE_CONF, 'w'), ensure_ascii=False)
         _wake_stop()                                    # il ciclo la riavvia con i nomi nuovi
-    return {'ok': True, 'enabled': c['enabled'], 'names': c['names'], 'available': _wake_ok(),
-            'running': bool(_wake['proc'] and _wake['proc'].poll() is None)}
+    why = ''
+    if not os.access(WAKE_PY, os.X_OK):
+        why = 'manca il programma di riconoscimento (vosk)'
+    elif not _wake_model():
+        why = 'manca il modello italiano di riconoscimento'
+    tail = ''
+    try:
+        tail = [l for l in open('/tmp/rise-attivazione.log', errors='replace').read().splitlines() if l.strip()][-1][-160:]
+    except (OSError, IndexError):
+        pass
+    return {'ok': True, 'enabled': c['enabled'], 'names': c['names'], 'available': _wake_ok(), 'why': why,
+            'running': bool(_wake['proc'] and _wake['proc'].poll() is None), 'started': bool(_wake['cb']), 'log': tail}
 
 CMDS = {'voice.status': status, 'voice.setup': setup, 'voice.listenStart': listen_start,
         'voice.listenStop': listen_stop, 'voice.listenCancel': listen_cancel, 'voice.say': say,

@@ -63,6 +63,31 @@ def make_folder(a):
             'where': os.path.basename(base) or 'cartella personale'}
 
 
+# ---------------- dove salvare: "nella cartella prova", "sul desktop" ----------------
+def resolve_folder(name):
+    """Cartella in cui salvare un documento. Vuoto → Documenti. Accetta luoghi (desktop, download…),
+    nomi di cartelle esistenti ("prova", "cartella clienti sul desktop") o un percorso."""
+    docs = os.path.join(HOME, 'Documenti')
+    n = (name or '').strip()
+    if not n:
+        return docs, ''
+    if n.startswith(('/', '~')):
+        p = os.path.expanduser(n)
+        return (p, '') if os.path.isdir(p) else (docs, 'non trovata')
+    low = _norm(n)
+    words = [w for w in re.findall(r'\w+', re.sub(r'\b(cartell\w*|nella|nel|sul|sulla|in|la|il)\b', ' ', low))]
+    only_place = [k for k in PLACES if low.strip() in (k, 'il ' + k, 'sul ' + k, 'cartella ' + k)]
+    if only_place:
+        p = os.path.join(HOME, PLACES[only_place[0]])
+        os.makedirs(p, exist_ok=True)
+        return p, ''
+    r = find_files({'testo': 'cartella ' + n, 'tipo': 'cartella'})
+    for x in r.get('results') or []:
+        if x.get('dir'):
+            return x['path'], ''
+    return docs, 'non trovata'
+
+
 # ---------------- trovare i file ----------------
 SKIP = {'.cache', '.local', '.config', '.mozilla', 'node_modules', '__pycache__', '.git', 'snap'}
 
@@ -70,6 +95,14 @@ SKIP = {'.cache', '.local', '.config', '.mozilla', 'node_modules', '__pycache__'
 def find_files(a):
     q = _norm(a.get('testo') or a.get('q') or '')
     kind = _norm(a.get('tipo') or '')
+    want_dir = bool(re.search(r'\b(cartell\w*|folder)\b', kind + ' ' + q))
+    # "sul desktop", "in documenti": si cerca prima lì, e la parola non fa parte del nome
+    prefer = None
+    for k, v in PLACES.items():
+        if re.search(r'\b%s\b' % k, q):
+            prefer = os.path.join(HOME, v)
+            q = re.sub(r'\b(sul|sulla|nel|nella|in|dal|dalla|della|del)?\s*%s\b' % k, ' ', q)
+    q = re.sub(r'\b(cartell\w*|folder)\b', ' ', q)
     exts = None
     for k, v in KINDS.items():
         if k in kind or (not kind and re.search(r'\b%s\b' % k, q)):
@@ -77,16 +110,33 @@ def find_files(a):
             q = re.sub(r'\b(il |la |lo |l\')?(file |documento )?%s\b' % k, ' ', q)
             break
     stop = {'il', 'la', 'lo', 'le', 'i', 'gli', 'un', 'una', 'di', 'del', 'della', 'file', 'documento', 'apri',
-            'aprimi', 'mi', 'che', 'ho', 'fatto', 'ultimo', 'ultima', 'mio', 'mia', 'per', 'a', 'al', 'con'}
+            'aprimi', 'mi', 'che', 'ho', 'fatto', 'ultimo', 'ultima', 'mio', 'mia', 'per', 'a', 'al', 'con',
+            'sul', 'sulla', 'nel', 'nella', 'in', 'chiamata', 'chiamato', 'nome'}
     words = [w for w in re.findall(r'[\w]+', q) if w not in stop and len(w) > 1]
     latest = bool(re.search(r'\bultim', _norm(a.get('testo') or '')))
     roots = [HOME] + [d for d in glob.glob('/media/*/*') if os.path.isdir(d)]
+    if not words and not exts and prefer and os.path.isdir(prefer):     # "apri il desktop", "apri documenti"
+        return {'ok': True, 'results': [{'path': prefer, 'name': os.path.basename(prefer), 'dir': True, 'size': 0,
+                                         'mtime': int(os.stat(prefer).st_mtime * 1000), 'folder': '~'}]}
     found, t0 = [], time.time()
     for root in roots:
         for dp, dns, fns in os.walk(root):
             dns[:] = [d for d in dns if not d.startswith('.') and d not in SKIP]
             if dp.count(os.sep) - root.count(os.sep) > 6 or time.time() - t0 > 4:
                 dns[:] = []
+            if words and not exts:                     # anche le cartelle col nome giusto
+                for d in dns:
+                    low = _norm(d)
+                    if all(w in low for w in words):
+                        p = os.path.join(dp, d)
+                        try:
+                            mt = int(os.stat(p).st_mtime * 1000)
+                        except OSError:
+                            continue
+                        found.append({'path': p, 'name': d, 'dir': True, 'size': 0, 'mtime': mt,
+                                      'folder': dp.replace(HOME, '~', 1)})
+            if want_dir:
+                continue
             for f in fns:
                 if f.startswith('.'):
                     continue
@@ -104,7 +154,9 @@ def find_files(a):
                     continue
                 found.append({'path': p, 'name': f, 'size': st.st_size, 'mtime': int(st.st_mtime * 1000),
                               'folder': dp.replace(HOME, '~', 1)})
-    found.sort(key=lambda x: -x['mtime'])
+    # prima le cartelle se ha detto "cartella", poi quelle nel posto indicato, poi le più recenti
+    found.sort(key=lambda x: (not (want_dir and x.get('dir')), not (prefer and x['path'].startswith(prefer + os.sep)),
+                              -x['mtime']))
     if latest:
         found = found[:1]
     return {'ok': True, 'results': found[:8]}
@@ -273,7 +325,7 @@ def make_pdf(a):
             m = re.search(r'^#{1,3}\s+(.+)$', text, re.M)
             title = m.group(1) if m else 'Documento'
         title = re.sub(r'[\\/:*?"<>|\n#]+', ' ', title.replace('**', '')).strip()[:70] or 'Documento'
-        folder = os.path.join(HOME, 'Documenti')
+        folder, _miss = resolve_folder(a.get('cartella') or '')
         os.makedirs(folder, exist_ok=True)
         out = os.path.join(folder, title + '.pdf')
     n, base = 2, out[:-4]
