@@ -413,7 +413,11 @@ def start(a):
         # Scheda video: con i chip recenti (Intel Iris/UHD dal 2015, AMD, NVIDIA) llama.cpp usa Vulkan e
         # legge le domande molte volte più in fretta. Sulle schede Intel vecchie (RISE_SAFE_GPU) solo processore.
         if _gpu_ok():
-            cmd += ['-ngl', '99']
+            mode = _gpu_mode()
+            if mode == 'half':     # metà strati sulla grafica, metà sul processore: grafica meno carica
+                cmd += ['-ngl', str({'0.8b': 12, '2b': 14, '4b': 18, '9b': 16}.get(mid, 16))]
+            else:
+                cmd += ['-ngl', '99']
         log = open('/tmp/rise-assistente.log', 'w')
         env = dict(os.environ)
         env.pop('LD_PRELOAD', None)
@@ -480,22 +484,42 @@ def prepare_usb(_=None):
     return risestore.prepare_usb()
 
 
+GPU_FILE = os.path.expanduser('~/.config/rise/ai-gpu-mode')
+
+
+def _gpu_mode():
+    """'full' tutta sulla grafica (più veloce), 'half' metà grafica e metà processore, 'cpu' solo processore."""
+    if os.path.exists(os.path.expanduser('~/.config/rise/ai-cpu-only')):
+        return 'cpu'
+    try:
+        m = open(GPU_FILE).read().strip()
+        return m if m in ('full', 'half', 'cpu') else 'full'
+    except OSError:
+        return 'full'
+
+
 def gpu_mode(a):
-    """Usa la scheda grafica per l'Assistente (più veloce) oppure solo il processore (niente sfarfallio su
-    alcuni portatili Intel). Cambiando si spegne il motore: riparte riaprendo l'Assistente."""
-    flag = os.path.expanduser('~/.config/rise/ai-cpu-only')
-    if 'gpu' in a:
-        if a['gpu']:
+    """Dove lavora l'Assistente. Se lo schermo lampeggia mentre pensa: 'half' o 'cpu'.
+    Cambiando si spegne il motore: riparte riaprendo l'Assistente."""
+    cpu_flag = os.path.expanduser('~/.config/rise/ai-cpu-only')
+    m = a.get('mode')
+    if m is None and 'gpu' in a:
+        m = 'full' if a['gpu'] else 'cpu'
+    if m in ('full', 'half', 'cpu'):
+        os.makedirs(os.path.dirname(GPU_FILE), exist_ok=True)
+        with open(GPU_FILE, 'w') as f:
+            f.write(m)
+        if m == 'cpu':
+            open(cpu_flag, 'w').close()
+        else:
             try:
-                os.remove(flag)
+                os.remove(cpu_flag)
             except OSError:
                 pass
-        else:
-            os.makedirs(os.path.dirname(flag), exist_ok=True)
-            open(flag, 'w').close()
         stop({})
-    return {'ok': True, 'gpu': not os.path.exists(flag), 'available': bool(glob_any(['/usr/lib/*/ggml/*/libggml-vulkan*',
-            '/usr/lib/*/ggml/*vulkan*', '/usr/lib/*/libggml-vulkan*', '/usr/lib/*/ggml*/libggml-vulkan*', '/opt/llama/libggml-vulkan*']))}
+    avail = bool(glob_any(['/usr/lib/*/ggml/*/libggml-vulkan*', '/usr/lib/*/ggml/*vulkan*', '/usr/lib/*/libggml-vulkan*',
+                           '/usr/lib/*/ggml*/libggml-vulkan*', '/opt/llama/libggml-vulkan*']))
+    return {'ok': True, 'mode': _gpu_mode(), 'gpu': _gpu_mode() != 'cpu', 'available': avail}
 
 
 CMDS = {'ai.prepareUsb': prepare_usb, 'ai.gpu': gpu_mode, 'ai.status': status, 'ai.download': download, 'ai.cancel': cancel, 'ai.delete': delete,
