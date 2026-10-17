@@ -37,3 +37,4 @@ Windows is a trademark of Microsoft Corporation. Rise is an independent project 
 - fpdf2 (LGPL-3.0): PDF documents created by the Assistant.
 - Flathub / Flatpak (LGPL-2.1): app store; each app keeps its own license, shown on flathub.org.
 - Open-Meteo (data CC BY 4.0): weather forecasts.
+- Market data from Yahoo Finance (delayed, for personal information only); news headlines from the publishers' public RSS feeds.
