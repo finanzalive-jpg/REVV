@@ -379,6 +379,7 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .mbox{display:block;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0}.mbox .note{margin:0 0 6px}
 .mail-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:8px 0;align-items:end}.mail-form label{display:grid;gap:3px;font-size:.9em}.mail-form input,.mail-form select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px}.mail-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rub{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}.rub span{flex:1;color:var(--ink-soft)}.rub-add{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.rub-add input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px}
+.ai-mail{max-height:240px;overflow:auto;margin:6px 0;padding:8px 10px;background:#f6f9fc;border-radius:6px;font-size:.92em}
 .inst-ask{display:grid;grid-template-columns:48px 1fr;gap:6px 12px;align-items:center;min-width:min(380px,70vw)}.inst-ask .md-act{grid-column:1/3}.inst-ask .meter{flex:1;min-width:120px}
 .ai-mic{display:inline-grid;place-items:center;min-width:42px}.ai-mic.rec{background:#d83a3a;color:#fff;border-color:#b52626;transition:box-shadow .15s}
 @keyframes airec{50%{box-shadow:0 0 0 6px rgba(216,58,58,.25)}}
@@ -1463,7 +1464,7 @@ const AI_SYS_TXT=`Sei l'Assistente di Rise, il sistema operativo di questo compu
 Per il meteo usa SEMPRE lo strumento meteo (dati veri e immediati). Hai accesso a internet: per notizie, prezzi, orari, persone, prodotti o qualsiasi cosa che può essere cambiata di recente usa cerca_web e poi leggi_pagina sulle fonti migliori; alla fine indica i siti usati. Se le pagine non contengono l'informazione, dillo: non inventare mai dati.
 Per un preventivo usa SEMPRE crea_preventivo: passa azienda, cliente, oggetto e le voci con quantità e prezzo unitario; i totali e l'IVA li calcola Rise. Non inventare nomi, indirizzi o prezzi: se mancano il cliente o i prezzi chiedili prima, in una sola domanda.
 Per lettere e altri documenti usa crea_documento_word con un testo completo e curato, senza segnaposto tra parentesi quadre (titoli con #, elenchi con -, tabelle con |).
-Per installare programmi usa installa_app. Per promemoria, sveglie e timer usa crea_promemoria. Per cartelle e file usa crea_cartella, apri_file, crea_pdf. Per inviare email usa prepara_email (allega_ultimo=true per il documento appena fatto): l’utente conferma sempre prima dell’invio. Per aprire programmi usa apri_programma; per aprire un sito (YouTube, Gmail…) o cercare un video usa apri_sito. Per trovare file del computer usa cerca_file.`;
+Per la posta in arrivo usa leggi_email; per riassumere, tradurre o capire un documento usa leggi_documento e poi rispondi tu (se chiede di salvare la traduzione o il riassunto usa crea_documento_word); per le notizie usa notizie; per mandare un file al telefono usa manda_al_telefono; per Wi-Fi e Bluetooth usa wifi_bluetooth. Per installare programmi usa installa_app. Per promemoria, sveglie e timer usa crea_promemoria. Per cartelle e file usa crea_cartella, apri_file, crea_pdf. Per inviare email usa prepara_email (allega_ultimo=true per il documento appena fatto): l’utente conferma sempre prima dell’invio. Per aprire programmi usa apri_programma; per aprire un sito (YouTube, Gmail…) o cercare un video usa apri_sito. Per trovare file del computer usa cerca_file.`;
 const AI_SYS=()=>AI_SYS_TXT+'\nOggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';
 const AI_TOOLS=[
  {type:'function',function:{name:'apri_programma',description:'Apre un programma del computer',parameters:{type:'object',properties:{nome:{type:'string',enum:['internet','word','excel','presentazioni','file','impostazioni','calcolatrice','note','video']}},required:['nome']}}},
@@ -1472,6 +1473,11 @@ const AI_TOOLS=[
    azienda:{type:'string',description:'Chi fa il preventivo: nome, indirizzo, partita IVA (vuoto = quella usata l’ultima volta)'},cliente:{type:'string',description:'Nome e indirizzo del cliente'},oggetto:{type:'string',description:'Di cosa si tratta, in breve'},
    voci:{type:'array',items:{type:'object',properties:{descrizione:{type:'string'},quantita:{type:'number'},prezzo:{type:'number',description:'Prezzo unitario in euro, senza IVA'}},required:['descrizione','prezzo']}},
    iva:{type:'number',description:'Percentuale IVA, di solito 22'},note:{type:'string'},pagamento:{type:'string'},validita:{type:'string'}},required:['cliente','voci']}}},
+ {type:'function',function:{name:'leggi_email',description:'Legge la posta: elenco delle ultime email (o solo le nuove), oppure il testo completo di un’email (da un mittente)',parameters:{type:'object',properties:{solo_nuove:{type:'boolean'},da:{type:'string',description:'Nome o indirizzo del mittente'},completa:{type:'boolean',description:'true per avere il testo completo dell’ultima email (del mittente indicato)'}}}}},
+ {type:'function',function:{name:'leggi_documento',description:'Legge il testo di un documento del computer (PDF, Word, Excel, testo) per riassumerlo, tradurlo o rispondere a domande',parameters:{type:'object',properties:{testo:{type:'string',description:'Parole del nome del file, oppure "ultimo"'},tipo:{type:'string'}},required:['testo']}}},
+ {type:'function',function:{name:'notizie',description:'Titoli delle notizie di oggi dai giornali italiani',parameters:{type:'object',properties:{fonte:{type:'string',description:'ansa, repubblica, corriere, sole, oppure argomento: sport, economia, mondo, tecnologia'}}}}},
+ {type:'function',function:{name:'manda_al_telefono',description:'Invia un file a un telefono o PC vicino con Rise Drop (LocalSend). Di base l’ultimo documento creato o aperto.',parameters:{type:'object',properties:{file:{type:'string',description:'Parole del nome del file (vuoto = ultimo documento)'},dispositivo:{type:'string'}}}}},
+ {type:'function',function:{name:'wifi_bluetooth',description:'Accende/spegne Wi-Fi o Bluetooth, o collega a una rete Wi-Fi',parameters:{type:'object',properties:{cosa:{type:'string',enum:['wifi','bluetooth']},azione:{type:'string',enum:['accendi','spegni','collega']},rete:{type:'string'}},required:['cosa','azione']}}},
  {type:'function',function:{name:'installa_app',description:'Installa un programma dal Negozio di Rise (Flathub): Chrome, Spotify, Zoom, WhatsApp, VLC, giochi…',parameters:{type:'object',properties:{nome:{type:'string'}},required:['nome']}}},
  {type:'function',function:{name:'crea_promemoria',description:'Crea un promemoria o un timer. quando: come lo dice l’utente (es. "alle 17", "domani alle 9", "tra 10 minuti")',parameters:{type:'object',properties:{testo:{type:'string',description:'Cosa ricordare, es. chiamare Rossi'},quando:{type:'string'}},required:['testo','quando']}}},
  {type:'function',function:{name:'lista_promemoria',description:'Elenca i promemoria in programma',parameters:{type:'object',properties:{}}}},
@@ -1534,7 +1540,7 @@ function renderAssistant(b){
     const log=$('.ai-log',body),ta=$('textarea',body),send=$('[data-send]',body);
     $('[data-new]',body).onclick=()=>{if(ctrl)ctrl.abort();msgs=[];log.innerHTML='';hello();ta.focus()};
     $('[data-models]',body).onclick=async()=>{if(ctrl)ctrl.abort();await refresh();setup()};
-    const hello=()=>{if(!msgs.length)log.innerHTML=`<div class="ai-hint"><b>Cosa posso fare?</b>${['Scrivimi un preventivo per l’installazione di 3 condizionatori','Che tempo farà domani a Roma?','Scrivi una lettera di disdetta della palestra','Come faccio a condividere una cartella con un altro PC?'].map(t=>`<button class="ai-chip">${t}</button>`).join('')}</div>`;
+    const hello=()=>{if(!msgs.length)log.innerHTML=`<div class="ai-hint"><b>Cosa posso fare?</b>${['Scrivimi un preventivo per l’installazione di 3 condizionatori','Che tempo farà domani a Roma?','Ho nuove email?','Ricordami alle 17 di chiamare Rossi','Dimmi le notizie','Installami Spotify','Riassumimi l’ultimo PDF'].map(t=>`<button class="ai-chip">${t}</button>`).join('')}</div>`;
       $$('.ai-chip',log).forEach(c=>c.onclick=()=>{ta.value=c.textContent;go()})};
     hello();
     const add=(role,html)=>{const h=$('.ai-hint',log);if(h)h.remove();const d=document.createElement('div');d.className='ai-msg '+role;d.innerHTML=html;log.appendChild(d);log.scrollTop=log.scrollHeight;return d};
@@ -1582,6 +1588,15 @@ function renderAssistant(b){
       if(/^(apri_sito|apri_programma)$/.test(name)&&!P.siti)return 'L’utente non ha dato il permesso di aprire siti e programmi (Impostazioni → Assistente).';
       if(/^(crea_cartella|apri_file|crea_pdf)$/.test(name)&&!P.file)return 'L’utente non ha dato il permesso di gestire file e cartelle (Impostazioni → Assistente).';
       if(name==='prepara_email'&&!P.email)return 'L’utente non ha dato il permesso di inviare email (Impostazioni → Assistente).';
+      if(name==='leggi_email'){if(!P.email)return 'Permesso email non dato.';
+        if(args.completa){const r=await SYS.call('mail.read',{da:args.da||''});if(!r.ok)return r.message;add('tool',`${I('share',20)} Leggo l’email di <b>${esc(r.from)}</b>: ${esc(r.subject)}`);return `Da: ${r.from} <${r.addr}>\nOggetto: ${r.subject}\nData: ${r.date}\nAllegati: ${r.attachments.join(', ')||'nessuno'}\n\n${r.text}`}
+        const r=await SYS.call('mail.inbox',{solo_nuove:!!args.solo_nuove,da:args.da||'',quante:8});if(!r.ok)return r.message;add('tool',`${I('share',20)} Controllo la posta: ${r.unread} da leggere`);
+        return 'Email da leggere: '+r.unread+'\n'+r.mails.map(m=>`${m.unread?'[NUOVA] ':''}${m.from}: ${m.subject} (${m.date})`).join('\n')}
+      if(name==='leggi_documento'){if(!P.file)return 'Permesso file non dato.';const r=await SYS.call('doc.read',/ultim/.test(args.testo||'')&&LASTDOC?{path:LASTDOC}:{testo:args.testo,tipo:args.tipo||''});if(!r.ok)return r.message;LASTDOC=r.path;
+        add('tool',`${fileIcon(r.name,20)} Leggo <b>${esc(r.name)}</b>`);return 'Testo di '+r.name+(r.truncated?' (solo l’inizio)':'')+':\n\n'+r.text}
+      if(name==='notizie'){const r=await SYS.call('news.get',{fonte:args.fonte||''});if(!r.ok)return r.message;add('tool',`${I('browser',20)} Notizie da <b>${esc(r.source)}</b>`);return r.items.slice(0,10).map(i=>'- '+i.title+(i.summary?': '+i.summary:'')).join('\n')}
+      if(name==='manda_al_telefono'){if(!P.file)return 'Permesso file non dato.';return await sendToPhone(args.file||'',args.dispositivo||'')}
+      if(name==='wifi_bluetooth'){if(!P.siti)return 'Permesso non dato.';return await netAct(args.cosa,args.azione,args.rete||'')}
       if(name==='installa_app'){if(!P.siti)return 'Permesso non dato.';const ok=await askInstall(args.nome);return ok}
       if(name==='crea_promemoria'){const r=await SYS.call('remind.add',{testo:args.testo,quando:args.quando});if(!r.ok)return r.message;add('tool',`${I('assistant',20)} Promemoria: <b>${esc(r.text)}</b> · ${esc(r.label)}`);return 'Promemoria creato per '+r.label}
       if(name==='lista_promemoria'){const r=await SYS.call('remind.list');return (r.items||[]).map(x=>x.label+': '+x.text).join('\n')||'Nessun promemoria.'}
@@ -1646,6 +1661,26 @@ function renderAssistant(b){
       thunderbird:'org.mozilla.Thunderbird',posta:'org.mozilla.Thunderbird',anydesk:'com.anydesk.Anydesk',obs:'com.obsproject.Studio',audacity:'org.audacityteam.Audacity',brave:'com.brave.Browser',skype:'com.skype.Client',teams:'com.github.IsmaelMartinez.teams_for_linux',
       'teamviewer':'com.teamviewer.TeamViewer',netflix:'com.netflix.Netflix',krita:'org.kde.krita',blender:'org.blender.Blender',inkscape:'org.inkscape.Inkscape',kdenlive:'org.kde.kdenlive',stremio:'com.stremio.Stremio',calibre:'com.calibre_ebook.calibre'};
     let PENDING=null;
+    // ---- Rise Drop: mandare un file al telefono
+    async function sendToPhone(fileWords,devName){let path=null,name='';
+      if(fileWords&&!/^(quest|ultim|il documento|il file)/.test(fileWords)){const r=await SYS.call('auto.find',{testo:fileWords}).catch(()=>({results:[]}));if((r.results||[])[0]){path=r.results[0].path;name=r.results[0].name}}
+      if(!path&&LASTDOC){path=LASTDOC;name=LASTDOC.split('/').pop()}
+      if(!path){reply('Quale file mando? Dimmi il nome, per esempio “manda il preventivo Rossi al telefono”.','Quale file mando?');return 'Nessun file indicato.'}
+      const note=add('tool',`${I('drop',20)} Cerco telefoni e PC vicini…`);let d=await SYS.call('drop',{action:'scan'}).catch(()=>({ok:false}));
+      await new Promise(r=>setTimeout(r,2500));d=await SYS.call('drop',{action:'devices'}).catch(()=>d);note.remove();
+      const devs=(d&&d.devices)||[];if(!devs.length){reply('Non vedo nessun telefono vicino. Apri l’app LocalSend sul telefono, collegato allo stesso Wi‑Fi, e riprova.','Non vedo nessun telefono vicino. Apri LocalSend sul telefono e riprova.');return 'Nessun dispositivo trovato.'}
+      const pickDev=devName?devs.find(x=>x.alias.toLowerCase().includes(devName.toLowerCase())):(devs.length===1?devs[0]:null);
+      const go3=async dv=>{PENDING=null;const n2=add('tool',`${I('drop',20)} Mando <b>${esc(name)}</b> a ${esc(dv.alias)}… (sul telefono tocca “Accetta”)`);await SYS.call('drop',{action:'send',device:dv.id,paths:[path]});speak('Lo sto mandando a '+dv.alias+'. Sul telefono tocca accetta.')};
+      if(pickDev){await go3(pickDev);return 'Invio in corso a '+pickDev.alias}
+      const box=add('bot',`A chi mando <b>${esc(name)}</b>? <span class="md-act">${devs.map((x,i)=>`<button class="btn" data-dv="${i}">${esc(x.alias)}</button>`).join('')}</span>`);
+      $$('[data-dv]',box).forEach(x=>x.onclick=()=>go3(devs[+x.dataset.dv]));speak('A quale dispositivo lo mando?');return 'Ho chiesto all’utente a quale dispositivo mandarlo.'}
+    // ---- Wi-Fi e Bluetooth
+    async function netAct(cosa,azione,rete){
+      if(cosa==='bluetooth'){const r=await SYS.call('bt.power',{on:azione!=='spegni'});const m=r.ok?'Bluetooth '+(azione==='spegni'?'spento':'acceso')+'.':r.message;reply(esc(m),m);return m}
+      if(azione==='collega'&&rete){const r=await SYS.call('wifi.join',{rete});if(r.need==='password'){const box=add('bot',`Per collegarmi a <b>${esc(rete)}</b> mi serve la password: <span class="md-act"><input type="password" class="wp" placeholder="password"><button class="btn primary" data-wy>Collega</button></span>`);
+          $('[data-wy]',box).onclick=async()=>{const r2=await SYS.call('wifi.join',{rete,password:$('.wp',box).value});const m=r2.ok?'Collegato a '+rete+'.':'Non riesco a collegarmi: '+(r2.message||'');$('.md-act',box).innerHTML=esc(m);speak(r2.ok?m:'Non riesco a collegarmi.')};speak('Mi serve la password del Wi-Fi.');return 'Chiesta la password.'}
+        const m=r.ok?'Collegato a '+r.ssid+'.':'Non riesco a collegarmi a '+rete+'. '+(r.message||'');reply(esc(m),r.ok?m:'Non riesco a collegarmi.');return m}
+      const r=await SYS.call('net.radio',{on:azione!=='spegni'});const m=r.ok?'Wi‑Fi '+(azione==='spegni'?'spento':'acceso')+'.':'Non ci sono riuscita.';reply(esc(m),m);return m}
     async function askInstall(name){const n=(name||'').toLowerCase().replace(/^(il|la|lo|l')\s*/,'').trim();let app=null;
       const id=ALIAS[n]||Object.entries(ALIAS).find(([k])=>n.includes(k))?.[1];
       const cat=await SYS.call('store.catalog').catch(()=>null);const all=cat?cat.categories.flatMap(c=>c.apps):[];
@@ -1672,6 +1707,23 @@ function renderAssistant(b){
       // conferma dell'email preparata
       if(DRAFT&&DRAFT.box){if(/^(s[iì]|ok|invia(la)?|manda(la)?|vai|procedi|conferma)(\s|$)/.test(t)){DRAFT.box._send();return true}
         if(/^(no|annulla|lascia stare|non inviare)/.test(t)){DRAFT=null;reply('Va bene, non la invio.','Va bene, non la invio.');return true}}
+      // posta: "ho nuove email?", "leggimi l'ultima email (di rossi)"
+      if(P.email&&/^(ho (nuove |delle )?(email|mail|posta)|ci sono (nuove )?(email|mail)|controlla (la )?(posta|email|mail)|leggimi (la posta|le email|le mail))/.test(t)){
+        const r=await SYS.call('mail.inbox',{solo_nuove:true,quante:6});if(!r.ok){reply(esc(r.message)+(r.need==='account'?' <a href="#" data-acc2>Collega ora</a>':''),r.message);const l=$('[data-acc2]',log);if(l)l.onclick=e=>{e.preventDefault();openApp('settings',{goto:'assistente'})};return true}
+        if(!r.mails.length){reply('Nessuna email nuova.','Nessuna email nuova.');return true}
+        reply(`Hai <b>${r.unread}</b> email da leggere:<br>${r.mails.map(m=>`• <b>${esc(m.from)}</b>: ${esc(m.subject)}`).join('<br>')}`,'Hai '+r.unread+' email da leggere. '+r.mails.slice(0,3).map(m=>'Da '+m.from+': '+m.subject).join('. ')+'.');return true}
+      if(P.email&&(m=t.match(/^(?:leggimi|leggi|apri)\s+l['’]?ultima\s+(?:email|mail)(?:\s+(?:di|da)\s+(.+))?$/))){const r=await SYS.call('mail.read',{da:m[1]||''});if(!r.ok){reply(esc(r.message),r.message);return true}
+        reply(`<b>${esc(r.from)}</b> · ${esc(r.subject)}<div class="ai-mail">${esc(r.text.slice(0,2500)).replace(/\n/g,'<br>')}</div>${r.attachments.length?'📎 '+esc(r.attachments.join(', ')):''}`,'Email di '+r.from+'. Oggetto: '+r.subject+'. '+r.text.slice(0,600));msgs.push({role:'user',content:'(testo dell’email letta: '+r.text.slice(0,3000)+')'});return true}
+      // notizie: "dimmi le notizie", "notizie di sport"
+      if(/^(dimmi |leggimi |quali sono )?(le )?(notizie|ultime notizie|novità del giorno|titoli)/.test(t)){const f=(t.match(/(sport|economia|mondo|tecnologia|repubblica|corriere|sole|ansa)/)||[])[1]||'ansa';
+        const r=await SYS.call('news.get',{fonte:f});if(!r.ok){reply(esc(r.message),r.message);return true}const L=r.items.slice(0,8);
+        reply(`${I('browser',18)} Notizie da <b>${esc(r.source)}</b>:<br>${L.map(i=>`• ${i.link?`<a href="#" data-url="${esc(i.link)}">${esc(i.title)}</a>`:esc(i.title)}`).join('<br>')}`,'Ecco le notizie da '+r.source+'. '+L.slice(0,4).map(i=>i.title).join('. ')+'.');
+        $$('[data-url]',log).forEach(a=>a.onclick=e=>{e.preventDefault();openUrl(a.dataset.url)});return true}
+      // Rise Drop: "manda il preventivo al telefono", "manda questo file al telefono"
+      if(P.file&&(m=t.match(/^(?:manda|invia|passa)(?:mi)?\s+(.*?)\s*(?:al|sul)\s+(telefono|cellulare|tablet|pc|computer)(?:\s+(?:di\s+)?(.+))?$/))){await sendToPhone(m[1].replace(/^(il|la|lo|l'|questo|questa|quel)\s*/,''),m[3]||'');return true}
+      // Wi-Fi e Bluetooth
+      if((m=t.match(/^(accendi|attiva|spegni|disattiva)\s+(?:il\s+)?(wi-?fi|wireless|bluetooth)$/))){await netAct(/blue/.test(m[2])?'bluetooth':'wifi',/accendi|attiva/.test(m[1])?'accendi':'spegni','');return true}
+      if((m=q.trim().replace(/[?!.]+$/,'').match(/^(?:collegati|connettiti|collega(?:mi)?)\s+(?:al|alla)\s+(?:wi-?fi|rete)\s+(?:di\s+|chiamat[ao]\s+)?(.+)$/i))){await netAct('wifi','collega',m[1]);return true}
       // app: "installami spotify", "scarica chrome", "metti whatsapp"
       if(P.siti&&(m=t.match(/^(?:installa(?:mi)?|scarica(?:mi)?|metti(?:mi)?|voglio)\s+(?:l'app\s+|l’app\s+|il programma\s+|anche\s+)?(.+?)(?:\s+(?:sul computer|sul pc|dal negozio))?$/))&&!/(video|canzon|musica|film)\b/.test(m[1])){await askInstall(m[1]);return true}
       // promemoria e timer: "ricordami alle 17 di chiamare rossi", "crea un promemoria domani alle 9 per…", "timer di 10 minuti"

@@ -463,3 +463,223 @@ CMDS = {'auto.mkdir': make_folder, 'auto.find': find_files, 'auto.pdf': make_pdf
         'contacts.list': contacts, 'contacts.save': contact_save, 'contacts.delete': contact_delete,
         'mail.get': mail_get, 'mail.set': mail_set, 'mail.send': mail_send, 'mail.test': mail_test,
         'mail.prepare': mail_prepare, 'mail.thunderbird': mail_thunderbird}
+
+
+# ---------------- leggere la posta (IMAP, stesso account usato per inviare) ----------------
+IMAP = {'gmail': 'imap.gmail.com', 'outlook': 'outlook.office365.com', 'libero': 'imapmail.libero.it',
+        'aruba': 'imaps.aruba.it', 'arubapec': 'imaps.pec.aruba.it', 'tim': 'imap.tim.it', 'yahoo': 'imap.mail.yahoo.com'}
+
+
+def _imap():
+    import imaplib
+    c = _mail_conf()
+    if not (c.get('email') and c.get('password')):
+        raise PermissionError('Prima va collegato il tuo account email (Impostazioni → Assistente).')
+    host = c.get('imap') or IMAP.get(c.get('provider', 'gmail'), 'imap.' + c['email'].split('@')[-1])
+    m = imaplib.IMAP4_SSL(host, 993, timeout=30)
+    m.login(c['email'], c['password'])
+    m.select('INBOX', readonly=True)
+    return m
+
+
+def _dec(h):
+    from email.header import decode_header, make_header
+    try:
+        return str(make_header(decode_header(h or '')))
+    except Exception:
+        return h or ''
+
+
+def mail_inbox(a):
+    import email
+    import email.utils
+    n = max(1, min(30, int(a.get('quante') or 8)))
+    who = _norm(a.get('da') or '')
+    try:
+        m = _imap()
+    except PermissionError as e:
+        return {'ok': False, 'message': str(e), 'need': 'account'}
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco a leggere la posta: %s' % e}
+    try:
+        crit = 'UNSEEN' if a.get('solo_nuove') else 'ALL'
+        _, data = m.search(None, crit)
+        ids = data[0].split()[-200:]
+        out = []
+        for i in reversed(ids):
+            _, d = m.fetch(i, '(FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])')
+            flags = d[0][0].decode(errors='replace')
+            h = email.message_from_bytes(d[0][1])
+            frm = _dec(h.get('From'))
+            if who and who not in _norm(frm):
+                continue
+            name, addr = email.utils.parseaddr(frm)
+            out.append({'id': i.decode(), 'from': name or addr, 'addr': addr, 'subject': _dec(h.get('Subject')) or '(senza oggetto)',
+                        'date': h.get('Date', ''), 'unread': '\\Seen' not in flags})
+            if len(out) >= n:
+                break
+        _, u = m.search(None, 'UNSEEN')
+        return {'ok': True, 'mails': out, 'unread': len(u[0].split())}
+    finally:
+        try:
+            m.logout()
+        except Exception:
+            pass
+
+
+def _plain(msg):
+    import html as _h
+    text, atts = '', []
+    for part in msg.walk():
+        if part.get_content_maintype() == 'multipart':
+            continue
+        fn = part.get_filename()
+        if fn:
+            atts.append(_dec(fn))
+            continue
+        ct = part.get_content_type()
+        try:
+            body = part.get_payload(decode=True).decode(part.get_content_charset() or 'utf-8', 'replace')
+        except Exception:
+            continue
+        if ct == 'text/plain' and not text:
+            text = body
+        elif ct == 'text/html' and not text:
+            body = re.sub(r'(?is)<(script|style).*?</\1>', ' ', body)
+            body = re.sub(r'(?i)<br\s*/?>|</p>|</div>', '\n', body)
+            text = _h.unescape(re.sub(r'<[^>]+>', ' ', body))
+    text = re.sub(r'[ \t\xa0]+', ' ', text)
+    text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text).strip()
+    return text, atts
+
+
+def mail_read(a):
+    import email
+    import email.utils
+    try:
+        m = _imap()
+    except PermissionError as e:
+        return {'ok': False, 'message': str(e), 'need': 'account'}
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco a leggere la posta: %s' % e}
+    try:
+        i = (a.get('id') or '').encode()
+        if not i:
+            who = _norm(a.get('da') or '')
+            _, data = m.search(None, 'ALL')
+            for j in reversed(data[0].split()[-200:]):
+                if not who:
+                    i = j
+                    break
+                _, d = m.fetch(j, '(BODY.PEEK[HEADER.FIELDS (FROM)])')
+                if who in _norm(_dec(email.message_from_bytes(d[0][1]).get('From'))):
+                    i = j
+                    break
+        if not i:
+            return {'ok': False, 'message': 'Non trovo email di “%s”.' % (a.get('da') or '')}
+        _, d = m.fetch(i, '(BODY.PEEK[])')
+        msg = email.message_from_bytes(d[0][1])
+        text, atts = _plain(msg)
+        name, addr = email.utils.parseaddr(_dec(msg.get('From')))
+        return {'ok': True, 'from': name or addr, 'addr': addr, 'subject': _dec(msg.get('Subject')), 'date': msg.get('Date', ''),
+                'text': text[:6000], 'attachments': atts}
+    finally:
+        try:
+            m.logout()
+        except Exception:
+            pass
+
+
+# ---------------- leggere i documenti (per riassumerli o tradurli) ----------------
+def read_doc(a):
+    p = a.get('path')
+    if not p:
+        r = find_files({'testo': a.get('testo') or '', 'tipo': a.get('tipo') or ''}).get('results') or []
+        if not r:
+            return {'ok': False, 'message': 'Non trovo il documento.'}
+        p = r[0]['path']
+    p = os.path.expanduser(p)
+    low = p.lower()
+    try:
+        if low.endswith('.pdf'):
+            out = subprocess.run(['pdftotext', '-layout', '-l', '30', p, '-'], capture_output=True, text=True, timeout=60).stdout
+        elif low.endswith('.docx'):
+            out = _docx_text(p)
+        elif low.endswith(('.txt', '.md', '.csv', '.log', '.html', '.htm')):
+            out = open(p, errors='replace').read()
+        elif low.endswith('.xlsx'):
+            with zipfile.ZipFile(p) as z:
+                ss = re.findall(r'<t[^>]*>([^<]*)</t>', z.read('xl/sharedStrings.xml').decode('utf8', 'replace')) if 'xl/sharedStrings.xml' in z.namelist() else []
+            out = '\n'.join(unescape(x) for x in ss)
+        else:
+            return {'ok': False, 'message': 'Questo tipo di file non lo so ancora leggere.'}
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco a leggerlo: %s' % e}
+    out = re.sub(r'[ \t]+', ' ', out)
+    out = re.sub(r'\n\s*\n+', '\n\n', out).strip()
+    return {'ok': True, 'path': p, 'name': os.path.basename(p), 'text': out[:7000], 'truncated': len(out) > 7000}
+
+
+# ---------------- notizie (titoli dai giornali, via RSS) ----------------
+FEEDS = {'ansa': ('ANSA', 'https://www.ansa.it/sito/ansait_rss.xml'),
+         'repubblica': ('la Repubblica', 'https://www.repubblica.it/rss/homepage/rss2.0.xml'),
+         'corriere': ('Corriere della Sera', 'https://xml2.corriereobjects.it/rss/homepage.xml'),
+         'sole': ('Il Sole 24 Ore', 'https://www.ilsole24ore.com/rss/italia.xml'),
+         'sport': ('ANSA Sport', 'https://www.ansa.it/sito/notizie/sport/sport_rss.xml'),
+         'economia': ('ANSA Economia', 'https://www.ansa.it/sito/notizie/economia/economia_rss.xml'),
+         'mondo': ('ANSA Mondo', 'https://www.ansa.it/sito/notizie/mondo/mondo_rss.xml'),
+         'tecnologia': ('ANSA Tecnologia', 'https://www.ansa.it/sito/notizie/tecnologia/tecnologia_rss.xml')}
+
+
+def news(a):
+    import html as _h
+    import urllib.request
+    key = _norm(a.get('fonte') or a.get('argomento') or 'ansa')
+    k = next((x for x in FEEDS if x in key), 'ansa')
+    name, url = FEEDS[k]
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 Rise/0.5'})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            xml = r.read(2_000_000).decode('utf-8', 'replace')
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco a leggere le notizie: %s' % e}
+    items = []
+    for it in re.findall(r'<item[ >].*?</item>', xml, re.S)[:12]:
+        def g(tag):
+            m = re.search(r'<%s[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</%s>' % (tag, tag), it, re.S)
+            return _h.unescape(re.sub(r'<[^>]+>', '', m.group(1))).strip() if m else ''
+        t = g('title')
+        if t:
+            items.append({'title': t, 'link': g('link'), 'summary': g('description')[:300]})
+    return {'ok': True, 'source': name, 'items': items}
+
+
+# ---------------- Wi-Fi e Bluetooth ----------------
+def wifi_join(a):
+    """Si collega a una rete Wi-Fi già conosciuta (o con la password data)."""
+    ssid = (a.get('rete') or '').strip()
+    rc = subprocess.run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'], capture_output=True, text=True).stdout
+    known = [l.split(':')[0] for l in rc.splitlines() if l.endswith('802-11-wireless')]
+    target = next((k for k in known if _norm(k) == _norm(ssid)), None) or next((k for k in known if _norm(ssid) in _norm(k)), None)
+    if target and not a.get('password'):
+        r = subprocess.run(['nmcli', 'connection', 'up', 'id', target], capture_output=True, text=True, timeout=40)
+        return {'ok': r.returncode == 0, 'ssid': target, 'message': (r.stderr or '').strip()[-200:]}
+    if not a.get('password'):
+        return {'ok': False, 'need': 'password', 'ssid': ssid}
+    try:
+        import risesys
+        return risesys.net_connect({'ssid': ssid, 'password': a['password']})
+    except Exception as e:
+        return {'ok': False, 'message': str(e)}
+
+
+def bt_power(a):
+    on = bool(a.get('on'))
+    subprocess.run(['sudo', '-n', 'rfkill', 'unblock' if on else 'block', 'bluetooth'], capture_output=True, timeout=10)
+    r = subprocess.run(['bluetoothctl', 'power', 'on' if on else 'off'], capture_output=True, text=True, timeout=15)
+    ok = r.returncode == 0 or (not on)
+    return {'ok': ok, 'message': '' if ok else 'Questo computer non ha il Bluetooth, o non è attivo.'}
+
+
+CMDS.update({'mail.inbox': mail_inbox, 'mail.read': mail_read, 'doc.read': read_doc, 'news.get': news,
+             'wifi.join': wifi_join, 'bt.power': bt_power})
