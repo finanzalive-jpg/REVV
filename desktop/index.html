@@ -1529,7 +1529,7 @@ const RiseFigure=(function(){
       // le pose differiscono solo in bocca e occhi: si sovrappongono sfumate
       put(1,Math.min(1,open/0.35));if(open>0.35)put(shape,(open-0.35)/0.4);if(blink>0.01)put(4,blink);ctx.globalAlpha=1}
     function tick(now){if(!alive)return;const dt=Math.min(60,now-(last||now));last=now;const prev=open;
-      open+=(target-open)*Math.min(1,dt/(target>open?45:80));
+      open+=(target-open)*Math.min(1,dt/(target>open?30:50));
       if(prev<0.4&&open>=0.4)shape=Math.random()<0.28?3:2;
       if(!blinkT&&now>blinkAt)blinkT=now;let b=0;
       if(blinkT){const t=(now-blinkT)/190;b=t<1?Math.sin(t*Math.PI):0;if(t>=1){blinkT=0;blinkAt=now+2400+Math.random()*3800}}
@@ -1550,11 +1550,11 @@ function initFigure(){
   const setState=st=>{if(st===state)return;state=st;el.classList.remove('listen','talk');if(st)el.classList.add(st)};
   async function poll(){if(polling||el.hidden||!NATIVE)return;polling=true;try{const r=await SYS.call('voice.level');
     if(r){if(r.voice&&(r.voice==='m'?'nicola':'sara')!==who&&r.speaking){S.aiVoice=r.voice;render()}
-      if(r.speaking){if(r.seq!==seq){seq=r.seq;env=r.env||[];step=r.step||.04;tl=performance.now()-r.elapsed*1000}}else env=[];
+      if(r.speaking){if(r.seq!==seq){seq=r.seq;env=r.env||[];step=r.step||.02;tl=performance.now()-r.elapsed*1000}}else env=[];
       fast=!!(r.speaking||r.listening||Date.now()-wakeT<15000);setState(r.listening?'listen':r.speaking?'talk':Date.now()-wakeT<4000?'listen':'')}}catch(e){}polling=false}
   (function loop(){poll();setTimeout(loop,fast?130:700)})();
   (function lip(){let v=0;if(env.length){const i=Math.floor((performance.now()-tl)/1000/step);v=i>=0&&i<env.length?env[i]:0;if(i>env.length+8)env=[]}
-    if(FIG)FIG.mouth(v>0.12?Math.min(1,v*1.15):0);requestAnimationFrame(lip)})();
+    if(FIG)FIG.mouth(v>0.06?v:0);requestAnimationFrame(lip)})();
   window.__riseWake=w=>{wakeT=Date.now();S.aiVoice=w==='m'?'m':'f';render();setState('listen');fast=true};
   el.onclick=()=>openApp('assistant');
   el.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();S.figure=false;apply();

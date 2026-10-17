@@ -44,15 +44,27 @@ def sentences(t):
     return out
 
 
-def envelope(samples, sr, ms=40):
-    n = max(1, int(sr * ms / 1000))
+def envelope(samples, sr, ms=20):
+    """Apertura della bocca dell'avatar, a passi di 20 ms: segue le sillabe (picchi di energia delle
+    vocali rispetto alle sillabe vicine), così la bocca si apre e si chiude a tempo con le parole."""
     x = np.asarray(samples, dtype=np.float32)
+    n = max(1, int(sr * ms / 1000))
     k = len(x) // n
     if k == 0:
         return []
-    r = np.sqrt((x[:k * n].reshape(k, n) ** 2).mean(1))
-    top = float(np.percentile(r, 95)) or 1.0
-    return [round(min(1.0, v / top), 2) for v in r.tolist()]
+    fr = x[:k * n].reshape(k, n)
+    spec = np.abs(np.fft.rfft(fr * np.hanning(n), axis=1))
+    f = np.fft.rfftfreq(n, 1.0 / sr)
+    e = spec[:, (f > 250) & (f < 3000)].sum(1)            # banda delle vocali
+    e = np.convolve(e, np.ones(2) / 2, 'same')
+    e = e / (float(np.percentile(e, 97)) or 1.0)
+    w = 6                                                  # ±120 ms, circa una sillaba
+    lo = np.array([e[max(0, i - w):i + w + 1].min() for i in range(k)])
+    hi = np.array([e[max(0, i - w):i + w + 1].max() for i in range(k)])
+    o = (e - lo) / np.maximum(hi - lo, 0.08)
+    o = o * np.clip(e * 3, 0, 1)                          # in silenzio resta chiusa
+    o = np.clip(o, 0, 1) ** 1.2 * np.clip(hi * 1.3, 0, 1)
+    return [round(float(v), 2) for v in o]
 
 
 def player():
@@ -67,8 +79,8 @@ def player():
         try:
             p = subprocess.Popen([PLAYER, path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             cur['proc'] = p
-            # volume della frase, a passi di 40 ms: l'avatar ci muove la bocca
-            print(json.dumps({'env': env, 'step': 40}), flush=True)
+            # apertura della bocca per questa frase, a passi di 20 ms: l'avatar la segue
+            print(json.dumps({'env': env, 'step': 20}), flush=True)
             _, err = p.communicate()
             if p.returncode not in (0, -15) and err:
                 print('riproduzione:', err.decode(errors='replace')[-300:], file=sys.stderr, flush=True)

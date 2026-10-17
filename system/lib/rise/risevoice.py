@@ -396,7 +396,7 @@ def _tts_proc():
                     except ValueError:
                         continue
                     if 'env' in m:
-                        _lip.update(env=m['env'], step=m.get('step', 40) / 1000.0, t0=time.time(), seq=_lip.get('seq', 0) + 1)
+                        _lip.update(env=m['env'], step=m.get('step', 20) / 1000.0, t0=time.time() + LIP_DELAY, seq=_lip.get('seq', 0) + 1)
                     elif m.get('end'):
                         _lip.update(env=[], t0=0)
         except Exception:
@@ -513,7 +513,8 @@ def shutdown(_=None):
     return {'ok': True}
 
 
-_lip = {'env': [], 'step': 0.04, 't0': 0}
+_lip = {'env': [], 'step': 0.02, 't0': 0}
+LIP_DELAY = 0.12        # il lettore audio impiega circa un decimo di secondo prima che il suono esca dalle casse
 
 
 def level(_=None):
