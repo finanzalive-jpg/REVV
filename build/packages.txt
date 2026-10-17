@@ -12,3 +12,5 @@ labwc libgtk4-layer-shell0 gir1.2-gtk4layershell-1.0 python3-pywayland wlrctl gr
 epiphany-browser mpv plocate
 plymouth plymouth-label systemd-zram-generator libglib2.0-bin openssl
 samba smbclient cifs-utils wsdd avahi-daemon avahi-utils
+libreoffice-writer libreoffice-calc libreoffice-impress libreoffice-draw libreoffice-gtk3 libreoffice-l10n-it libreoffice-help-it hyphen-it mythes-it
+inkscape xournalpp

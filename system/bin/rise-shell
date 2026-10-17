@@ -62,6 +62,19 @@ NATIVE = [
      'cmd': ['deckcraft'], 'app_ids': ['ai.storyteller.deckcraft', 'deckcraft']},
     {'id': 'player', 'name': 'Lettore video', 'desc': 'Guarda film e video', 'icon': 'player',
      'cmd': ['mpv', '--player-operation-mode=pseudo-gui'], 'app_ids': ['mpv']},
+    # LibreOffice: apre e salva bene i file di Word, Excel e PowerPoint
+    {'id': 'writer', 'name': 'Documenti (Word)', 'desc': 'Lettere e documenti Word (.docx), anche quelli che arrivano per email', 'icon': 'm-word',
+     'cmd': ['libreoffice', '--writer'], 'app_ids': ['libreoffice-writer', 'soffice', 'libreoffice']},
+    {'id': 'calc', 'name': 'Fogli (Excel)', 'desc': 'Fogli di calcolo Excel (.xlsx) con formule e grafici', 'icon': 'm-xls',
+     'cmd': ['libreoffice', '--calc'], 'app_ids': ['libreoffice-calc']},
+    {'id': 'impress', 'name': 'Presentazioni (PowerPoint)', 'desc': 'Presentazioni PowerPoint (.pptx)', 'icon': 'm-ppt',
+     'cmd': ['libreoffice', '--impress'], 'app_ids': ['libreoffice-impress']},
+    {'id': 'draw', 'name': 'Modifica PDF', 'desc': 'Cambia testi e immagini dentro un PDF', 'icon': 'm-pdf',
+     'cmd': ['libreoffice', '--draw'], 'app_ids': ['libreoffice-draw']},
+    {'id': 'inkscape', 'name': 'Disegno vettoriale (come CorelDRAW)', 'desc': 'Loghi, volantini, grafica; apre anche i file di CorelDRAW (.cdr)', 'icon': 'viewer',
+     'cmd': ['inkscape'], 'app_ids': ['org.inkscape.Inkscape', 'inkscape']},
+    {'id': 'pdffill', 'name': 'Compila e firma PDF', 'desc': 'Scrivi sui moduli PDF, aggiungi la firma, evidenzia', 'icon': 'm-pdf',
+     'cmd': ['xournalpp'], 'app_ids': ['com.github.xournalpp.xournalpp', 'xournalpp']},
 ]
 
 
@@ -534,12 +547,17 @@ class Rise(Gtk.Application):
         # apre un file col programma giusto: video e musica col lettore, Office con i Craft
         path = a.get('path') or ''
         ext = os.path.splitext(path)[1].lower()
-        table = {'.docx': 'word', '.doc': 'word', '.odt': 'word', '.rtf': 'word', '.xlsx': 'sheet', '.xls': 'sheet',
-                 '.ods': 'sheet', '.csv': 'sheet', '.pptx': 'deck', '.ppt': 'deck', '.odp': 'deck',
+        # per ogni tipo di file, i programmi in ordine di preferenza: si usa il primo installato
+        table = {'.docx': ('writer', 'word'), '.doc': ('writer', 'word'), '.odt': ('writer', 'word'), '.rtf': ('writer', 'word'),
+                 '.xlsx': ('sheet', 'calc'), '.xls': ('calc', 'sheet'), '.ods': ('calc', 'sheet'), '.csv': ('sheet', 'calc'),
+                 '.pptx': ('impress', 'deck'), '.ppt': ('impress', 'deck'), '.odp': ('impress', 'deck'),
+                 '.cdr': 'inkscape', '.svg': 'inkscape', '.ai': 'inkscape', '.eps': 'inkscape', '.xopp': 'pdffill',
                  '.mp4': 'player', '.mkv': 'player', '.avi': 'player', '.mov': 'player', '.webm': 'player',
                  '.mp3': 'player', '.flac': 'player', '.ogg': 'player', '.wav': 'player', '.m4a': 'player',
                  '.html': 'browser', '.htm': 'browser'}
         nid = a.get('app') or table.get(ext)
+        if isinstance(nid, tuple):
+            nid = next((n for n in nid if any(x['id'] == n and shutil.which(x['cmd'][0]) for x in self.all_native())), nid[0])
         if not nid:
             return {'ok': False}
         app = next((n for n in self.all_native() if n['id'] == nid), None)
@@ -556,7 +574,7 @@ class Rise(Gtk.Application):
                                     stdout=subprocess.DEVNULL, stderr=open('/tmp/rise-apri.log', 'a'))
         except OSError:
             return {'ok': False}
-        if nid in ('player', 'browser'):
+        if nid in ('player', 'browser', 'writer', 'calc', 'impress', 'inkscape', 'pdffill'):
             return {'ok': True}
         t0 = time.time()
 
