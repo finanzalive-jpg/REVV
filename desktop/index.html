@@ -379,6 +379,7 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .mbox{display:block;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0}.mbox .note{margin:0 0 6px}
 .mail-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:8px 0;align-items:end}.mail-form label{display:grid;gap:3px;font-size:.9em}.mail-form input,.mail-form select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px}.mail-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .rub{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}.rub span{flex:1;color:var(--ink-soft)}.rub-add{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.rub-add input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px}
+.inst-ask{display:grid;grid-template-columns:48px 1fr;gap:6px 12px;align-items:center;min-width:min(380px,70vw)}.inst-ask .md-act{grid-column:1/3}.inst-ask .meter{flex:1;min-width:120px}
 .ai-mic{display:inline-grid;place-items:center;min-width:42px}.ai-mic.rec{background:#d83a3a;color:#fff;border-color:#b52626;transition:box-shadow .15s}
 @keyframes airec{50%{box-shadow:0 0 0 6px rgba(216,58,58,.25)}}
 .ai-voice{font:inherit;font-size:.9em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -766,7 +767,7 @@ $('#screen').addEventListener('contextmenu',e=>{if(e.target.closest('.win'))retu
 const startEl=$('#start'),q=$('#q'),orb=$('#orb');
 function closePops(keep){$$('.drop-card').forEach(x=>{if(!keep&&x.querySelector('[data-y]')&&x.textContent.includes('vuole inviarti'))x.querySelector('[data-n]').click();x.remove()});startEl.hidden=true;$('#quick').hidden=true;orb.setAttribute('aria-expanded','false');if(ROLE==='popup'&&!keep)SYS.call('popup.hide').catch(()=>{})}
 function openStart(){if(MW&&NATIVE)SYS.call('native.list').then(l=>{NAPPS=l||[];if(!startEl.hidden)renderStart()}).catch(()=>{});startEl.hidden=false;orb.setAttribute('aria-expanded','true');q.value='';renderStart();setTimeout(()=>q.focus(),30)}
-window.__risePopup=(k,data)=>{closePops(true);$$('.drop-card').forEach(x=>x.remove());if(k==='quick')openQuick();else if(k==='drop')dropAsk(data);else if(k==='dropdone')dropDone(data);else openStart()};
+window.__risePopup=(k,data)=>{closePops(true);$$('.drop-card').forEach(x=>x.remove());if(k==='quick')openQuick();else if(k==='drop')dropAsk(data);else if(k==='dropdone')dropDone(data);else if(k==='remind')remindCard(data);else openStart()};
 function dropCard(html){const c=document.createElement('div');c.className='pop drop-card';c.innerHTML=html;c.onclick=e=>e.stopPropagation();document.body.appendChild(c);return c}
 function dropAsk(r){const c=dropCard(`<div class="dc-head">${I('net',40)}<div><b>${esc(r.from)}</b> vuole inviarti ${r.count===1?'un file':r.count+' file'}<br><small>${fsize(r.size)} · arriveranno nella cartella Download</small></div></div>
   <ul class="dc-files">${r.files.map(f=>`<li>${fileIcon(f,18)}${esc(f)}</li>`).join('')}${r.count>r.files.length?`<li class="more">e altri ${r.count-r.files.length}…</li>`:''}</ul>
@@ -775,6 +776,10 @@ function dropAsk(r){const c=dropCard(`<div class="dc-head">${I('net',40)}<div><b
 function dropDone(ev){const c=dropCard(`<div class="dc-head">${I('f-down',40)}<div><b>Ricevuti ${ev.files.length===1?'un file':ev.files.length+' file'}</b> da ${esc(ev.from)}<br><small>Sono nella cartella Download</small></div></div>
   <div class="dd-foot"><button class="btn" data-n>Chiudi</button><button class="btn primary" data-y>Apri Download</button></div>`);
   $('[data-y]',c).onclick=()=>{c.remove();openApp('files',{goto:'fs:'+ev.folder})};$('[data-n]',c).onclick=()=>{c.remove();SYS.call('popup.hide')}}
+function remindCard(r){const c=dropCard(`<div class="dc-head">${I('assistant',40)}<div><b>${r.timer?'Tempo scaduto!':'Promemoria'}</b><br><span style="font-size:1.15em">${esc(r.text)}</span></div></div>
+  <div class="dd-foot"><button class="btn" data-s>Tra 10 minuti</button><button class="btn primary" data-y>Fatto</button></div>`);
+  $('[data-y]',c).onclick=()=>{c.remove();SYS.call('voice.stop').catch(()=>{});SYS.call('popup.hide')};
+  $('[data-s]',c).onclick=async()=>{await SYS.call('remind.snooze',{testo:r.text,minuti:10});c.remove();SYS.call('voice.stop').catch(()=>{});SYS.call('popup.hide')}}
 window.__risePopupState=k=>{orb.setAttribute('aria-expanded',String(k==='start'))};
 orb.onclick=e=>{e.stopPropagation();if(ROLE==='panel'){SYS.call(orb.getAttribute('aria-expanded')==='true'?'popup.hide':'popup.show',{kind:'start'});return}const open=startEl.hidden;closePops();if(open){startEl.hidden=false;orb.setAttribute('aria-expanded','true');q.value='';renderStart();setTimeout(()=>q.focus(),30)}};
 const PLACES=[['computer','Questo computer',()=>openApp('files',{goto:'pc:'})],['f-docs','Documenti',()=>openApp('files',{goto:NATIVE?'fs:~/Documenti':'ex:Documenti'})],['f-images','Immagini',()=>openApp('files',{goto:NATIVE?'fs:~/Immagini':'ex:Immagini'})],['f-music','Musica',()=>openApp('files',{goto:NATIVE?'fs:~/Musica':'ex:Musica'})],['f-down','Download',()=>openApp('files',{goto:NATIVE?'fs:~/Download':'ex:Download'})],null,['open','Apri un file…',()=>{if(MW){openApp('files',{goto:'fs:~'});return}closePops();$('#pick-file').click()}],['settings','Impostazioni',()=>openApp('settings')]];
@@ -1458,7 +1463,7 @@ const AI_SYS_TXT=`Sei l'Assistente di Rise, il sistema operativo di questo compu
 Per il meteo usa SEMPRE lo strumento meteo (dati veri e immediati). Hai accesso a internet: per notizie, prezzi, orari, persone, prodotti o qualsiasi cosa che può essere cambiata di recente usa cerca_web e poi leggi_pagina sulle fonti migliori; alla fine indica i siti usati. Se le pagine non contengono l'informazione, dillo: non inventare mai dati.
 Per un preventivo usa SEMPRE crea_preventivo: passa azienda, cliente, oggetto e le voci con quantità e prezzo unitario; i totali e l'IVA li calcola Rise. Non inventare nomi, indirizzi o prezzi: se mancano il cliente o i prezzi chiedili prima, in una sola domanda.
 Per lettere e altri documenti usa crea_documento_word con un testo completo e curato, senza segnaposto tra parentesi quadre (titoli con #, elenchi con -, tabelle con |).
-Per cartelle e file usa crea_cartella, apri_file, crea_pdf. Per inviare email usa prepara_email (allega_ultimo=true per il documento appena fatto): l’utente conferma sempre prima dell’invio. Per aprire programmi usa apri_programma; per aprire un sito (YouTube, Gmail…) o cercare un video usa apri_sito. Per trovare file del computer usa cerca_file.`;
+Per installare programmi usa installa_app. Per promemoria, sveglie e timer usa crea_promemoria. Per cartelle e file usa crea_cartella, apri_file, crea_pdf. Per inviare email usa prepara_email (allega_ultimo=true per il documento appena fatto): l’utente conferma sempre prima dell’invio. Per aprire programmi usa apri_programma; per aprire un sito (YouTube, Gmail…) o cercare un video usa apri_sito. Per trovare file del computer usa cerca_file.`;
 const AI_SYS=()=>AI_SYS_TXT+'\nOggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';
 const AI_TOOLS=[
  {type:'function',function:{name:'apri_programma',description:'Apre un programma del computer',parameters:{type:'object',properties:{nome:{type:'string',enum:['internet','word','excel','presentazioni','file','impostazioni','calcolatrice','note','video']}},required:['nome']}}},
@@ -1467,6 +1472,9 @@ const AI_TOOLS=[
    azienda:{type:'string',description:'Chi fa il preventivo: nome, indirizzo, partita IVA (vuoto = quella usata l’ultima volta)'},cliente:{type:'string',description:'Nome e indirizzo del cliente'},oggetto:{type:'string',description:'Di cosa si tratta, in breve'},
    voci:{type:'array',items:{type:'object',properties:{descrizione:{type:'string'},quantita:{type:'number'},prezzo:{type:'number',description:'Prezzo unitario in euro, senza IVA'}},required:['descrizione','prezzo']}},
    iva:{type:'number',description:'Percentuale IVA, di solito 22'},note:{type:'string'},pagamento:{type:'string'},validita:{type:'string'}},required:['cliente','voci']}}},
+ {type:'function',function:{name:'installa_app',description:'Installa un programma dal Negozio di Rise (Flathub): Chrome, Spotify, Zoom, WhatsApp, VLC, giochi…',parameters:{type:'object',properties:{nome:{type:'string'}},required:['nome']}}},
+ {type:'function',function:{name:'crea_promemoria',description:'Crea un promemoria o un timer. quando: come lo dice l’utente (es. "alle 17", "domani alle 9", "tra 10 minuti")',parameters:{type:'object',properties:{testo:{type:'string',description:'Cosa ricordare, es. chiamare Rossi'},quando:{type:'string'}},required:['testo','quando']}}},
+ {type:'function',function:{name:'lista_promemoria',description:'Elenca i promemoria in programma',parameters:{type:'object',properties:{}}}},
  {type:'function',function:{name:'crea_cartella',description:'Crea una cartella sul computer',parameters:{type:'object',properties:{nome:{type:'string'},dove:{type:'string',description:'documenti, desktop, download, immagini (di base: documenti)'}},required:['nome']}}},
  {type:'function',function:{name:'apri_file',description:'Trova e apre un file del computer (documenti Word, PDF, fogli, foto, video) cercandolo per nome',parameters:{type:'object',properties:{testo:{type:'string',description:'Parole del nome del file, es. preventivo rossi'},tipo:{type:'string',description:'word, pdf, excel, foto, video (se detto)'}},required:['testo']}}},
  {type:'function',function:{name:'crea_pdf',description:'Crea un PDF: dal testo che scrivi tu, oppure trasformando l’ultimo documento Word creato (da_ultimo=true)',parameters:{type:'object',properties:{titolo:{type:'string'},testo:{type:'string'},da_ultimo:{type:'boolean'}}}}},
@@ -1574,6 +1582,9 @@ function renderAssistant(b){
       if(/^(apri_sito|apri_programma)$/.test(name)&&!P.siti)return 'L’utente non ha dato il permesso di aprire siti e programmi (Impostazioni → Assistente).';
       if(/^(crea_cartella|apri_file|crea_pdf)$/.test(name)&&!P.file)return 'L’utente non ha dato il permesso di gestire file e cartelle (Impostazioni → Assistente).';
       if(name==='prepara_email'&&!P.email)return 'L’utente non ha dato il permesso di inviare email (Impostazioni → Assistente).';
+      if(name==='installa_app'){if(!P.siti)return 'Permesso non dato.';const ok=await askInstall(args.nome);return ok}
+      if(name==='crea_promemoria'){const r=await SYS.call('remind.add',{testo:args.testo,quando:args.quando});if(!r.ok)return r.message;add('tool',`${I('assistant',20)} Promemoria: <b>${esc(r.text)}</b> · ${esc(r.label)}`);return 'Promemoria creato per '+r.label}
+      if(name==='lista_promemoria'){const r=await SYS.call('remind.list');return (r.items||[]).map(x=>x.label+': '+x.text).join('\n')||'Nessun promemoria.'}
       if(name==='crea_cartella'){const r=await SYS.call('auto.mkdir',{nome:args.nome,dove:args.dove});if(!r.ok)return r.message;
         add('tool',`${I('folder',20)} ${r.existed?'C’era già':'Ho creato'} la cartella <b>${esc(args.nome)}</b> in ${esc(r.where)}.`);LASTDIR=r.path;return 'Cartella pronta: '+r.path}
       if(name==='apri_file'){const r=await SYS.call('auto.find',{testo:args.testo,tipo:args.tipo||''});const L=r.results||[];
@@ -1629,6 +1640,26 @@ function renderAssistant(b){
         if(x.allegati.length)openApp('files',{goto:'fs:'+x.allegati[0].replace(/\/[^/]*$/,'')});done(x.allegati.length?'Aperta in Gmail: trascina l’allegato dalla finestra della cartella.':'Aperta in Gmail.',true)};
       $('[data-cancel]',box).onclick=()=>done('Annullata.',true);const ac=$('[data-acc]',box);if(ac)ac.onclick=e=>{e.preventDefault();openApp('settings',{goto:'assistente'})};
       speak(d.to?`Ho preparato l'email per ${d.label||d.to}. Vuoi che la invii?`:`Non ho l'indirizzo email di ${d.label}. Scrivilo nel riquadro.`)}
+    // ---- installare app dal Negozio (con conferma) e azioni da confermare
+    const ALIAS={google:'com.google.Chrome',chrome:'com.google.Chrome','google chrome':'com.google.Chrome',firefox:'org.mozilla.firefox',spotify:'com.spotify.Client',whatsapp:'com.rtosta.zapzap',telegram:'org.telegram.desktop',zoom:'us.zoom.Zoom',vlc:'org.videolan.VLC',
+      office:'org.libreoffice.LibreOffice',libreoffice:'org.libreoffice.LibreOffice',onlyoffice:'org.onlyoffice.desktopeditors',photoshop:'org.gimp.GIMP',gimp:'org.gimp.GIMP',steam:'com.valvesoftware.Steam',discord:'com.discordapp.Discord',
+      thunderbird:'org.mozilla.Thunderbird',posta:'org.mozilla.Thunderbird',anydesk:'com.anydesk.Anydesk',obs:'com.obsproject.Studio',audacity:'org.audacityteam.Audacity',brave:'com.brave.Browser',skype:'com.skype.Client',teams:'com.github.IsmaelMartinez.teams_for_linux',
+      'teamviewer':'com.teamviewer.TeamViewer',netflix:'com.netflix.Netflix',krita:'org.kde.krita',blender:'org.blender.Blender',inkscape:'org.inkscape.Inkscape',kdenlive:'org.kde.kdenlive',stremio:'com.stremio.Stremio',calibre:'com.calibre_ebook.calibre'};
+    let PENDING=null;
+    async function askInstall(name){const n=(name||'').toLowerCase().replace(/^(il|la|lo|l')\s*/,'').trim();let app=null;
+      const id=ALIAS[n]||Object.entries(ALIAS).find(([k])=>n.includes(k))?.[1];
+      const cat=await SYS.call('store.catalog').catch(()=>null);const all=cat?cat.categories.flatMap(c=>c.apps):[];
+      app=all.find(a=>a.id===id)||all.find(a=>a.name.toLowerCase()===n)||all.find(a=>a.name.toLowerCase().includes(n));
+      if(!app){const r=await SYS.call('store.search',{q:name}).catch(()=>({results:[]}));app=(r.results||[])[0]}
+      if(!app){reply(`Non trovo “${esc(name)}” nel Negozio.`,'Non trovo '+name+' nel Negozio.');return 'App non trovata nel Negozio.'}
+      if(app.installed){SYS.call('store.launch',{id:app.id});reply(`<b>${esc(app.name)}</b> è già installato: lo apro.`,app.name+' è già installato, lo apro.');return 'Già installato, aperto.'}
+      const box=add('bot',`<div class="inst-ask"><img src="${esc(app.icon)}" width="48" height="48" alt="" onerror="this.style.visibility='hidden'"><div><b>Installo ${esc(app.name)}?</b><br><small>${esc(app.desc||'')}</small></div><div class="md-act"><button class="btn primary" data-y>Installa</button><button class="btn" data-n>No</button></div></div>`);
+      const go2=async()=>{PENDING=null;$('.md-act',box).innerHTML='<div class="meter"><i style="width:3%"></i></div><small class="ia-msg">Preparo…</small>';await SYS.call('store.install',{id:app.id,name:app.name});
+        const t=setInterval(async()=>{const r=await SYS.call('store.jobs').catch(()=>null);if(!r||!b.isConnected)return;const j=r.jobs[app.id]||{};const mtr=$('.meter i',box);if(mtr)mtr.style.width=(j.pct||3)+'%';const mm=$('.ia-msg',box);if(mm)mm.textContent=(j.msg||'')+' '+(j.pct?j.pct+'%':'');
+          if(!j.running){clearInterval(t);if(j.error){$('.md-act',box).innerHTML=`<span class="err">${esc(j.error)}</span>`;speak('Non sono riuscita a installarlo.')}
+            else{$('.md-act',box).innerHTML='<span class="ok">Installato!</span> <button class="btn primary" data-o>Apri</button>';$('[data-o]',box).onclick=()=>SYS.call('store.launch',{id:app.id});SYS.call('native.list').then(l=>{NAPPS=l||[]}).catch(()=>{});speak(app.name+' è installato.')}}},1200)};
+      PENDING={yes:go2,no:()=>{PENDING=null;$('.md-act',box).innerHTML='<small>Va bene, niente.</small>'}};$('[data-y]',box).onclick=go2;$('[data-n]',box).onclick=PENDING.no;
+      speak('Vuoi che installi '+app.name+'?');return 'Ho chiesto conferma all’utente per installare '+app.name+'.'}
     // ---- comandi rapidi: le richieste semplici si eseguono subito, senza aspettare il "cervello"
     const SITES={youtube:'https://www.youtube.com',gmail:'https://mail.google.com',google:'https://www.google.it',amazon:'https://www.amazon.it',facebook:'https://www.facebook.com',instagram:'https://www.instagram.com',whatsapp:'https://web.whatsapp.com',maps:'https://www.google.com/maps',mappe:'https://www.google.com/maps',wikipedia:'https://it.wikipedia.org',netflix:'https://www.netflix.com',spotify:'https://open.spotify.com',ebay:'https://www.ebay.it',chatgpt:'https://chatgpt.com',repubblica:'https://www.repubblica.it',corriere:'https://www.corriere.it'};
     const APPN={word:['nat','word'],documento:['nat','word'],wordcraft:['nat','word'],excel:['nat','sheet'],foglio:['nat','sheet'],gridcraft:['nat','sheet'],presentazion:['nat','deck'],powerpoint:['nat','deck'],deckcraft:['nat','deck'],browser:['nat','browser'],internet:['nat','browser'],calcolatrice:['app','calc'],impostazioni:['app','settings'],file:['app','files'],esplora:['app','files'],cartell:['app','files'],note:['app','notes'],video:['nat','player']};
@@ -1636,9 +1667,36 @@ function renderAssistant(b){
     const reply=(html,spoken,q)=>{add('bot',html);msgs.push({role:'assistant',content:spoken});speak(spoken)};
     async function quick(q){
       const t=q.toLowerCase().replace(/[?!.]+$/,'').trim();let m;const P=Object.assign({siti:true,file:true,email:true},S.perm||{});
+      // conferma di un'azione in sospeso (installazione, spegnimento)
+      if(PENDING){if(/^(s[iì]|ok|vai|procedi|conferma|installa(lo|la)?|certo)(\s|$)/.test(t)){PENDING.yes();return true}if(/^(no|annulla|lascia stare)/.test(t)){PENDING.no();return true}}
       // conferma dell'email preparata
       if(DRAFT&&DRAFT.box){if(/^(s[iì]|ok|invia(la)?|manda(la)?|vai|procedi|conferma)(\s|$)/.test(t)){DRAFT.box._send();return true}
         if(/^(no|annulla|lascia stare|non inviare)/.test(t)){DRAFT=null;reply('Va bene, non la invio.','Va bene, non la invio.');return true}}
+      // app: "installami spotify", "scarica chrome", "metti whatsapp"
+      if(P.siti&&(m=t.match(/^(?:installa(?:mi)?|scarica(?:mi)?|metti(?:mi)?|voglio)\s+(?:l'app\s+|l’app\s+|il programma\s+|anche\s+)?(.+?)(?:\s+(?:sul computer|sul pc|dal negozio))?$/))&&!/(video|canzon|musica|film)\b/.test(m[1])){await askInstall(m[1]);return true}
+      // promemoria e timer: "ricordami alle 17 di chiamare rossi", "crea un promemoria domani alle 9 per…", "timer di 10 minuti"
+      if(/^(ricordami|promemoria|crea un promemoria|metti un promemoria|fammi ricordare|svegliami|timer|metti un timer|imposta un timer)/.test(t)){
+        const isTimer=/timer|sveglia/.test(t);let what=q.replace(/^\s*(ricordami|crea un promemoria|metti un promemoria|fammi ricordare|promemoria|svegliami|metti un timer|imposta un timer|timer)\s*/i,'');
+        what=what.replace(/\b(oggi|domani|dopodomani|stasera|stamattina|domattina|nel pomeriggio)\b/ig,'').replace(/\b(alle|all'|verso le|per le)\s*\d{1,2}([:.]\d{2})?(\s+e\s+(mezza|un quarto|\d+))?/ig,'').replace(/\b(tra|fra)\s+\S+\s*(minut\w*|or[ae]|secondi)/ig,'').replace(/\b(di|da)\s+\d+\s*(minut\w*|or[ae]|secondi)/ig,'')
+          .replace(/\b(lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica|lunedi|martedi|mercoledi|giovedi|venerdi)\b/ig,'').replace(/\s{2,}/g,' ').replace(/^\s*(di|che|per|a)\s+/i,'').trim();
+        const r=await SYS.call('remind.add',{testo:what||(isTimer?'Tempo scaduto':'Promemoria'),quando:q,timer:isTimer});
+        if(!r.ok){reply(esc(r.message),r.message);return true}
+        reply(`${I('assistant',18)} ${isTimer?'Timer impostato':'Promemoria'}: <b>${esc(r.text)}</b> · ${esc(r.label)}.`,(isTimer?'Timer impostato: suona ':'Ok, te lo ricordo ')+r.label.replace(/(\d{2}):(\d{2})/,(x,h,mm)=>+h+(mm!=='00'?' e '+(+mm):''))+'.');return true}
+      if(/^(quali promemoria|che promemoria|i miei promemoria|elenca i promemoria)/.test(t)){const r=await SYS.call('remind.list');const L=r.items||[];
+        reply(L.length?L.map(x=>`• ${esc(x.label)}: <b>${esc(x.text)}</b>`).join('<br>'):'Non hai promemoria.',L.length?'Hai '+L.length+' promemoria. Il prossimo: '+L[0].text+', '+L[0].label+'.':'Non hai promemoria.');return true}
+      if(/^(cancella|togli|elimina)\s+(tutti\s+)?(i\s+)?promemoria/.test(t)){const r=await SYS.call('remind.delete',{tutti:/tutti/.test(t)});reply('Promemoria cancellati: '+r.removed+'.','Fatto.');return true}
+      // calcoli: "quanto fa 18% di 2300", "quanto fa 125 per 4"
+      if((m=t.match(/^(?:quanto fa|calcola|quant'è|quanto è)\s+(.+)$/))){let e=m[1].replace(/,/g,'.').replace(/\bper\b|x/g,'*').replace(/\bdiviso\b|:/g,'/').replace(/\bpiù\b|\bpiu\b/g,'+').replace(/\bmeno\b/g,'-');
+        let r=null;const pc=e.match(/^([\d.]+)\s*%\s*(?:di|su)\s*([\d.]+)$/);if(pc)r=+pc[1]*+pc[2]/100;else if(/^[\d.\s+*/()-]+$/.test(e)){try{r=Function('return ('+e+')')()}catch(x){}}
+        if(r!=null&&isFinite(r)){const v=(+r.toFixed(4)).toLocaleString('it-IT');reply(`<b>${v}</b>`,'Fa '+v+'.');return true}}
+      // schermata: "fai uno screenshot"
+      if(/^(fai|fammi|cattura)\s+(uno\s+|una\s+)?(screenshot|foto dello schermo|schermata)/.test(t)){const r=await SYS.call('shot.take').catch(()=>({ok:false}));
+        if(r.ok){reply(`${I('f-images',18)} Fatto: <b>${esc(r.name)}</b> in Immagini.`,'Fatto, è nella cartella Immagini.');LASTDOC=r.path;return true}}
+      // spegnimento programmato: "spegni il computer tra 30 minuti"
+      if((m=t.match(/^spegni(?:\s+il\s+(?:computer|pc))?(?:\s+(?:tra|fra)\s+(\d+)\s*minut\w*)?$/))){const mins=+(m[1]||0);
+        const box=add('bot',`Spengo il computer ${mins?'tra '+mins+' minuti':'adesso'}? <span class="md-act"><button class="btn primary" data-y>Sì</button><button class="btn" data-n>No</button></span>`);
+        PENDING={yes:async()=>{PENDING=null;if(mins){await SYS.call('remind.add',{testo:'Il computer si spegne tra un minuto',iso:new Date(Date.now()+(mins-1)*60000).toISOString().slice(0,19)});setTimeout(()=>SYS.call('power',{action:'off'}),mins*60000);reply('Ok, spengo tra '+mins+' minuti. Lascia aperto l’Assistente.','Ok, spengo tra '+mins+' minuti.')}else SYS.call('power',{action:'off'})},no:()=>{PENDING=null;reply('Va bene.','Va bene.')}};
+        $('[data-y]',box).onclick=()=>PENDING&&PENDING.yes();$('[data-n]',box).onclick=()=>PENDING&&PENDING.no();speak(mins?'Spengo tra '+mins+' minuti?':'Spengo il computer?');return true}
       // cartelle: "crea una cartella clienti sul desktop"
       if(P.file&&(m=q.trim().replace(/[?!.]+$/,'').match(/^(?:crea(?:mi)?|fammi|nuova)\s+(?:una\s+)?(?:nuova\s+)?cartella\s+(?:chiamata\s+|di nome\s+|con nome\s+)?(.+?)(?:\s+(?:sul|sulla|nel|nella|in)\s+(desktop|scrivania|documenti|download|immagini|musica|video))?$/i))){
         const r=await SYS.call('auto.mkdir',{nome:m[1].replace(/^["“']|["”']$/g,''),dove:(m[2]||'documenti').toLowerCase()});if(r.ok){reply(`${I('folder',18)} ${r.existed?'C’era già':'Ho creato'} la cartella <b>${esc(m[1])}</b> in ${esc(r.where)}.`,(r.existed?'C’era già la cartella ':'Ho creato la cartella ')+m[1]+'.');openApp('files',{goto:'fs:'+r.path});return true}}

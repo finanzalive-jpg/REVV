@@ -172,6 +172,12 @@ class Rise(Gtk.Application):
             self.drop = None
         # indice per la ricerca dei file, aggiornato con calma dopo l'avvio
         GLib.timeout_add_seconds(90, self.index_later)
+        # promemoria e timer dell'Assistente: suonano anche con l'Assistente chiuso
+        try:
+            import riseremind
+            riseremind.start(lambda r: GLib.idle_add(self.reminder_fire, r))
+        except Exception as e:
+            print('promemoria non attivi:', e, file=sys.stderr)
 
     def check_panel(self):
         # la barra deve essere alta BAR_H: se il sistema l'ha fatta più bassa, la rimette a posto
@@ -382,6 +388,15 @@ class Rise(Gtk.Application):
         self.js('popup', 'window.__risePopup && window.__risePopup(%s, %s)' % (json.dumps(self.popup_kind), json.dumps(a.get('data'))))
         self.js('panel', 'window.__risePopupState && window.__risePopupState(%s)' % json.dumps(self.popup_kind))
         return {'ok': True}
+
+    def reminder_fire(self, r):
+        self.popup_show({'kind': 'remind', 'data': r})
+        try:
+            import risevoice
+            risevoice.say({'voice': 'f', 'text': ('È scaduto il timer. ' if r.get('timer') else 'Promemoria: ') + r.get('text', '')})
+        except Exception:
+            pass
+        return False
 
     def popup_hide(self, _a=None, _name=None):
         o = self.windows.get('popup')
