@@ -1389,8 +1389,9 @@ function renderInstaller(b){
       $('.meter i',body).style.width=(st.pct||2)+'%';$('.ip-msg',body).textContent=st.message||'…';
       if(st.done){clearInterval(poll);if(st.phase==='error'){body.innerHTML=`<h2>Non è andata</h2><p class="err">${esc(st.message)}</p><p>Windows e i tuoi file non sono stati toccati.</p><div class="iact"><button class="btn" data-again>Riprova</button></div>`;$('[data-again]',body).onclick=async()=>{SC=await SYS.call('install.scan');step2()}}
         else body.innerHTML=`<div class="ihero">${I('install',56)}<div><h2>Fatto! 🎉</h2><p class="lead">${esc(st.message)}</p></div></div><div class="iact"><button class="btn primary" data-off>Spegni il computer</button></div>`,$('[data-off]',body)&&($('[data-off]',body).onclick=()=>SYS.call('power',{action:'poweroff'}))}},1000)};
-  (async()=>{try{SC=await SYS.call('install.scan')}catch(e){SC={ok:false,message:e.message}}
-    if(!SC.ok){body.innerHTML=`<p class="note">${esc(SC.message||'Non riesco a leggere i dischi.')}</p>`;return}
+  (async()=>{const slow=setTimeout(()=>{const n=$('.note',body);if(n&&!SC)n.textContent='Sto ancora leggendo i dischi… (con dischi grandi o lenti può volerci fino a un minuto)'},10000);
+    try{SC=await SYS.call('install.scan')}catch(e){SC={ok:false,message:e.message==='timeout'?'I dischi non rispondono.':e.message}}clearTimeout(slow);
+    if(!SC.ok){body.innerHTML=`<p class="err">${esc(SC.message||'Non riesco a leggere i dischi.')}</p><div class="iact"><button class="btn" data-retry>Riprova</button></div>`;$('[data-retry]',body).onclick=()=>renderInstaller(b);return}
     const st=(await SYS.call('install.status').catch(()=>({}))).status||{};if(st.phase&&!st.done)return progress();step1()})();
 }
 
