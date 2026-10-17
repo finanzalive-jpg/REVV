@@ -1507,7 +1507,7 @@ const AI_TOOLS=[
  {type:'function',function:{name:'crea_promemoria',description:'Crea un promemoria o un timer. quando: come lo dice l’utente (es. "alle 17", "domani alle 9", "tra 10 minuti")',parameters:{type:'object',properties:{testo:{type:'string',description:'Cosa ricordare, es. chiamare Rossi'},quando:{type:'string'}},required:['testo','quando']}}},
  {type:'function',function:{name:'lista_promemoria',description:'Elenca i promemoria in programma',parameters:{type:'object',properties:{}}}},
  {type:'function',function:{name:'crea_cartella',description:'Crea una cartella sul computer',parameters:{type:'object',properties:{nome:{type:'string'},dove:{type:'string',description:'documenti, desktop, download, immagini (di base: documenti)'}},required:['nome']}}},
- {type:'function',function:{name:'apri_file',description:'Trova e apre un file del computer (documenti Word, PDF, fogli, foto, video) cercandolo per nome',parameters:{type:'object',properties:{testo:{type:'string',description:'Parole del nome del file, es. preventivo rossi'},tipo:{type:'string',description:'word, pdf, excel, foto, video (se detto)'}},required:['testo']}}},
+ {type:'function',function:{name:'apri_file',description:'Trova e apre un file o una cartella del computer (cartelle, documenti Word, PDF, fogli, foto, video) cercandolo per nome, anche sul desktop',parameters:{type:'object',properties:{testo:{type:'string',description:'Parole del nome, es. preventivo rossi, oppure cartella prova sul desktop'},tipo:{type:'string',description:'cartella, word, pdf, excel, foto, video (se detto)'}},required:['testo']}}},
  {type:'function',function:{name:'crea_pdf',description:'Crea un PDF: dal testo che scrivi tu, oppure trasformando l’ultimo documento Word creato (da_ultimo=true)',parameters:{type:'object',properties:{titolo:{type:'string'},testo:{type:'string'},da_ultimo:{type:'boolean'}}}}},
  {type:'function',function:{name:'prepara_email',description:'Prepara un’email da inviare (l’utente la conferma prima dell’invio). Può allegare l’ultimo documento creato.',parameters:{type:'object',properties:{destinatario:{type:'string',description:'Nome in rubrica o indirizzo email'},oggetto:{type:'string'},testo:{type:'string'},allega_ultimo:{type:'boolean',description:'Allega l’ultimo documento creato o aperto'},formato_allegato:{type:'string',description:'pdf o word'}},required:['destinatario','oggetto','testo']}}},
  {type:'function',function:{name:'apri_sito',description:'Apre un sito nel browser (YouTube, Google, Gmail, Amazon, un indirizzo web) o una ricerca su YouTube',parameters:{type:'object',properties:{sito:{type:'string',description:'Nome del sito o indirizzo, es. youtube, gmail, www.repubblica.it'},cerca:{type:'string',description:'Cosa cercare nel sito, se richiesto (es. video da cercare su YouTube)'}},required:['sito']}}},
@@ -1685,9 +1685,9 @@ function renderAssistant(b,opts){
       if(name==='crea_cartella'){const r=await SYS.call('auto.mkdir',{nome:args.nome,dove:args.dove});if(!r.ok)return r.message;
         add('tool',`${I('folder',20)} ${r.existed?'C’era già':'Ho creato'} la cartella <b>${esc(args.nome)}</b> in ${esc(r.where)}.`);LASTDIR=r.path;return 'Cartella pronta: '+r.path}
       if(name==='apri_file'){const r=await SYS.call('auto.find',{testo:args.testo,tipo:args.tipo||''});const L=r.results||[];
-        if(!L.length)return 'Nessun file trovato con quelle parole.';
+        if(!L.length)return 'Nessun file o cartella trovato con quelle parole.';
         if(L.length>1&&!/ultim/.test(args.testo||'')){add('tool',`${I('files',20)} Ho trovato ${L.length} file: ${L.slice(0,5).map(f=>`<button class="btn" data-openf="${esc(f.path)}">${esc(f.name)}</button>`).join(' ')}`);bindOpenF();return 'Trovati più file: '+L.slice(0,5).map(f=>f.name).join('; ')+'. Ho mostrato i pulsanti: chiedi quale aprire, oppure apri il primo se è chiaramente quello giusto.'}
-        openFile(L[0]);return 'Aperto '+L[0].name}
+        openFile(L[0]);add('tool',`${I(L[0].dir?'files':'viewer',20)} Apro <b>${esc(L[0].name)}</b>`);return (L[0].dir?'Aperta la cartella ':'Aperto ')+L[0].name}
       if(name==='crea_pdf'){const r=await SYS.call('auto.pdf',args.da_ultimo&&LASTDOC?{da_file:LASTDOC}:{titolo:args.titolo,testo:args.testo});if(!r.ok)return r.message;
         LASTDOC=r.path;SYS.call('open.with',{path:r.path}).catch(()=>{});add('tool',`${I('m-pdf',20)} Ho creato <b>${esc(r.name)}</b> in Documenti.`);return 'PDF creato: '+r.name}
       if(name==='prepara_email'){let att=[];if(args.allega_ultimo&&LASTDOC){let p=LASTDOC;if(/pdf/i.test(args.formato_allegato||'')&&!/\.pdf$/i.test(p)){const r=await SYS.call('auto.pdf',{da_file:p});if(r.ok)p=r.path}att=[p]}
@@ -1717,7 +1717,7 @@ function renderAssistant(b,opts){
       return 'Strumento sconosciuto.'}
     // ---- ultimo documento, file trovati, bozza dell'email da confermare
     let LASTDOC=null,LASTDIR=null,DRAFT=null;
-    function openFile(f){LASTDOC=f.path;const vw=()=>openApp('viewer',{goto:{native:true,path:f.path,name:f.name,size:f.size,lastModified:f.mtime}});
+    function openFile(f){if(f.dir){openApp('files',{goto:'fs:'+f.path});return}LASTDOC=f.path;const vw=()=>openApp('viewer',{goto:{native:true,path:f.path,name:f.name,size:f.size,lastModified:f.mtime}});
       if(/\.(docx?|odt|rtf|xlsx?|ods|csv|pptx?|odp|mp4|mkv|avi|mov|webm|m4v|mp3|flac|ogg|wav|m4a)$/i.test(f.path))SYS.call('open.with',{path:f.path}).then(r=>{if(!r||!r.ok)vw()}).catch(vw);else vw();
       add('tool',`${fileIcon(f.name,20)} Apro <b>${esc(f.name)}</b> <small>(${esc(f.folder||'')})</small>`)}
     function bindOpenF(){$$('[data-openf]',log).forEach(x=>x.onclick=()=>{const p=x.dataset.openf;openFile({path:p,name:p.split('/').pop()})})}
