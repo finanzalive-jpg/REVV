@@ -159,3 +159,69 @@ def weather(a):
 
 
 CMDS = {'web.search': search, 'web.read': read, 'web.weather': weather}
+
+# ---------------- mercati e borsa (Yahoo Finance, dati in ritardo di circa 15 minuti) ----------------
+MARKETS = [('FTSE MIB', 'FTSEMIB.MI'), ('DAX', '^GDAXI'), ('Euro Stoxx 50', '^STOXX50E'), ('S&P 500', '^GSPC'),
+           ('Nasdaq', '^IXIC'), ('Dow Jones', '^DJI'), ('Euro/Dollaro', 'EURUSD=X'), ('Oro', 'GC=F'),
+           ('Petrolio Brent', 'BZ=F'), ('Bitcoin', 'BTC-USD')]
+ALIASES = {'ftse mib': 'FTSEMIB.MI', 'borsa italiana': 'FTSEMIB.MI', 'piazza affari': 'FTSEMIB.MI', 'milano': 'FTSEMIB.MI',
+           'dax': '^GDAXI', 'francoforte': '^GDAXI', 'germania': '^GDAXI', 'eurostoxx': '^STOXX50E', 'euro stoxx': '^STOXX50E',
+           's&p': '^GSPC', 'sp500': '^GSPC', 's&p 500': '^GSPC', 'wall street': '^GSPC', 'nasdaq': '^IXIC', 'dow': '^DJI',
+           'dow jones': '^DJI', 'euro dollaro': 'EURUSD=X', 'eurodollaro': 'EURUSD=X', 'euro': 'EURUSD=X', 'dollaro': 'EURUSD=X',
+           'oro': 'GC=F', 'gold': 'GC=F', 'argento': 'SI=F', 'petrolio': 'BZ=F', 'brent': 'BZ=F', 'wti': 'CL=F',
+           'gas': 'TTF=F', 'bitcoin': 'BTC-USD', 'btc': 'BTC-USD', 'ethereum': 'ETH-USD', 'nikkei': '^N225',
+           'cac': '^FCHI', 'parigi': '^FCHI', 'ftse 100': '^FTSE', 'londra': '^FTSE', 'vix': '^VIX', 'sterlina': 'EURGBP=X',
+           'franco svizzero': 'EURCHF=X', 'yen': 'EURJPY=X', 'btp': 'FTSEMIB.MI'}
+
+
+def _quote(sym, label=None):
+    import json
+    page, _, _ = _get('https://query1.finance.yahoo.com/v8/finance/chart/%s?range=1d&interval=1d' % urllib.parse.quote(sym), timeout=12)
+    r = json.loads(page)['chart']['result'][0]['meta']
+    price = r.get('regularMarketPrice')
+    prev = r.get('chartPreviousClose') or r.get('previousClose')
+    ch = (price - prev) / prev * 100 if price is not None and prev else None
+    return {'symbol': sym, 'name': label or r.get('shortName') or r.get('longName') or sym, 'price': price,
+            'prev': prev, 'change': round(ch, 2) if ch is not None else None, 'currency': r.get('currency') or '',
+            'time': r.get('regularMarketTime'), 'state': r.get('marketState') or ''}
+
+
+def _find_symbol(q):
+    import json
+    page, _, _ = _get('https://query2.finance.yahoo.com/v1/finance/search?' +
+                      urllib.parse.urlencode({'q': q, 'quotesCount': 6, 'newsCount': 0, 'lang': 'it-IT', 'region': 'IT'}), timeout=12)
+    qs = [x for x in json.loads(page).get('quotes', []) if x.get('symbol')]
+    qs.sort(key=lambda x: (not str(x['symbol']).endswith('.MI'), x.get('quoteType') != 'EQUITY'))
+    return (qs[0]['symbol'], qs[0].get('shortname') or qs[0].get('longname')) if qs else (None, None)
+
+
+def markets(a):
+    """Come vanno i mercati: i principali indici, cambi e materie prime; oppure un titolo preciso."""
+    what = (a.get('titolo') or a.get('nome') or '').strip().lower()
+    out = []
+    try:
+        if what:
+            sym = ALIASES.get(what) or next((v for k, v in ALIASES.items() if k in what), None)
+            label = None
+            if not sym:
+                sym, label = _find_symbol(what)
+            if not sym:
+                return {'ok': False, 'message': 'Non trovo “%s” in borsa.' % what}
+            out.append(_quote(sym, label or next((n for n, s in MARKETS if s == sym), None)))
+        else:
+            import concurrent.futures as cf
+            with cf.ThreadPoolExecutor(6) as ex:
+                futs = [ex.submit(_quote, s, n) for n, s in MARKETS]
+                for f in futs:
+                    try:
+                        out.append(f.result())
+                    except Exception:
+                        pass
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco a leggere i dati di borsa: %s' % e}
+    if not out:
+        return {'ok': False, 'message': 'Non riesco a leggere i dati di borsa adesso.'}
+    return {'ok': True, 'items': out, 'note': 'Dati Yahoo Finance, in ritardo di circa 15 minuti.'}
+
+
+CMDS.update({'web.markets': markets})

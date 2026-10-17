@@ -384,10 +384,21 @@ def _tts_proc():
     ready = threading.Event()
 
     def wait_ready():
+        import json
         try:
             for line in p.stdout:
-                if line.strip() == 'pronto':
+                line = line.strip()
+                if line == 'pronto':
                     ready.set()
+                elif line.startswith('{'):
+                    try:
+                        m = json.loads(line)
+                    except ValueError:
+                        continue
+                    if 'env' in m:
+                        _lip.update(env=m['env'], step=m.get('step', 40) / 1000.0, t0=time.time(), seq=_lip.get('seq', 0) + 1)
+                    elif m.get('end'):
+                        _lip.update(env=[], t0=0)
         except Exception:
             pass
     threading.Thread(target=wait_ready, daemon=True).start()
@@ -416,6 +427,7 @@ def stop_speaking(_=None):
             _tts_send({'stop': True})
         except Exception:
             pass
+    _lip.update(env=[], t0=0)
     p = _play['proc']
     _play['proc'] = None
     if p and p.poll() is None:
@@ -434,6 +446,7 @@ def say(a):
         text = _clean_for_voice(a.get('text') or '')
         if text:
             try:
+                _lip['voice'] = v
                 _tts_send({'say': text, 'voice': KOKORO_VOICES[v], 'speed': a.get('speed') or 1.0,
                            'append': bool(a.get('append'))})
             except Exception as e:
@@ -500,11 +513,155 @@ def shutdown(_=None):
     return {'ok': True}
 
 
+_lip = {'env': [], 'step': 0.04, 't0': 0}
+
+
+def level(_=None):
+    """Volume della frase che si sta ascoltando (passi da 40 ms) e da quanto è partita: l'avatar muove la bocca."""
+    env, t0 = _lip['env'], _lip['t0']
+    if not env or not t0:
+        return {'ok': True, 'speaking': False, 'seq': _lip.get('seq', 0), 'voice': _lip.get('voice'), 'listening': bool(_rec['proc'] and _rec['proc'].poll() is None)}
+    return {'ok': True, 'speaking': True, 'seq': _lip.get('seq', 0), 'env': env, 'voice': _lip.get('voice'),
+            'step': _lip['step'], 'elapsed': round(time.time() - t0, 3)}
+
+
 def speaking(_=None):
     p = _play['proc']
     return {'ok': True, 'speaking': bool(p and p.poll() is None)}
 
 
+
+# ---------- parola di attivazione ("Ehi Sara") ----------
+WAKE_PY = '/opt/rise-py/bin/python'
+WAKE_CONF = os.path.join(HOME, '.config', 'rise', 'attivazione.json')
+_wake = {'proc': None, 'cb': None, 'paused': None, 'want': False, 'error': ''}
+
+
+def _wake_model():
+    for d in ('/opt/vosk-it', os.path.join(DIR, 'vosk-it')):
+        if os.path.isfile(os.path.join(d, 'am', 'final.mdl')) or os.path.isdir(os.path.join(d, 'am')):
+            return d
+    return None
+
+
+def _wake_conf():
+    import json
+    c = {'enabled': True, 'names': {'f': 'Sara', 'm': 'Nicola'}}
+    try:
+        c.update(json.load(open(WAKE_CONF)))
+    except Exception:
+        pass
+    return c
+
+
+def _wake_ok():
+    return os.access(WAKE_PY, os.X_OK) and bool(_wake_model())
+
+
+def _wake_stop():
+    p = _wake['proc']
+    _wake['proc'] = None
+    _wake['paused'] = None
+    if p and p.poll() is None:
+        try:
+            os.killpg(p.pid, signal.SIGTERM)
+        except Exception:
+            pass
+
+
+def _wake_run():
+    import json
+    c = _wake_conf()
+    if not (c.get('enabled') and _wake_ok() and _wake['cb']):
+        return
+    env = dict(os.environ)
+    env.pop('LD_PRELOAD', None)
+    log = open('/tmp/rise-attivazione.log', 'a')
+    p = subprocess.Popen(['nice', '-n', '5', WAKE_PY, '-I', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'risewake.py'),
+                          _wake_model(), json.dumps({k: v for k, v in c['names'].items() if v})],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, env=env, start_new_session=True, text=True)
+    _wake['proc'] = p
+
+    def reader():
+        for line in p.stdout:
+            line = line.strip()
+            if line.startswith('{'):
+                try:
+                    who = json.loads(line).get('wake')
+                except ValueError:
+                    continue
+                if who and _wake['cb'] and not _wake['paused']:
+                    try:
+                        _wake['cb'](who)
+                    except Exception:
+                        pass
+    threading.Thread(target=reader, daemon=True).start()
+
+
+def _busy():
+    """L'Assistente sta parlando o ascoltando una domanda: niente parola di attivazione (non deve sentirsi da solo)."""
+    if _rec['proc'] and _rec['proc'].poll() is None:
+        return True
+    if _play['proc'] and _play['proc'].poll() is None:
+        return True
+    env, t0 = _lip['env'], _lip['t0']
+    return bool(env and t0 and time.time() < t0 + len(env) * _lip['step'] + 1.2)
+
+
+def _wake_loop():
+    import json
+    fails = 0
+    while _wake['want']:
+        p = _wake['proc']
+        if p is None or p.poll() is not None:
+            if p is not None:
+                fails += 1
+            _wake['proc'] = None
+            if fails < 5:
+                _wake_run()
+            time.sleep(2 if fails else 0.2)
+            continue
+        b = _busy()
+        if b != _wake['paused']:
+            try:
+                p.stdin.write(json.dumps({'pause': b}) + '\n')
+                p.stdin.flush()
+                _wake['paused'] = b
+            except Exception:
+                pass
+        time.sleep(0.2)
+
+
+def wake_start(cb):
+    """Chiamata da rise-shell all'avvio: cb(chi) quando qualcuno dice "Ehi Sara" / "Ehi Nicola"."""
+    _wake['cb'] = cb
+    if not _wake['want']:
+        _wake['want'] = True
+        threading.Thread(target=_wake_loop, daemon=True).start()
+
+
+def wake_config(a):
+    """Accende/spegne l'attivazione e cambia i nomi; senza argomenti dice solo com'è impostata."""
+    import json
+    c = _wake_conf()
+    changed = False
+    if 'enabled' in a:
+        c['enabled'] = bool(a['enabled'])
+        changed = True
+    if isinstance(a.get('names'), dict):
+        for k in ('f', 'm'):
+            v = re.sub(r'[^A-Za-zÀ-ÿ\' ]', '', str(a['names'].get(k) or '')).strip()[:30]
+            if v:
+                c['names'][k] = v
+        changed = True
+    if changed:
+        os.makedirs(os.path.dirname(WAKE_CONF), exist_ok=True)
+        json.dump(c, open(WAKE_CONF, 'w'), ensure_ascii=False)
+        _wake_stop()                                    # il ciclo la riavvia con i nomi nuovi
+    return {'ok': True, 'enabled': c['enabled'], 'names': c['names'], 'available': _wake_ok(),
+            'running': bool(_wake['proc'] and _wake['proc'].poll() is None)}
+
 CMDS = {'voice.status': status, 'voice.setup': setup, 'voice.listenStart': listen_start,
         'voice.listenStop': listen_stop, 'voice.listenCancel': listen_cancel, 'voice.say': say,
-        'voice.stop': stop_speaking, 'voice.speaking': speaking, 'voice.warm': warm, 'voice.shutdown': shutdown}
+        'voice.stop': stop_speaking, 'voice.speaking': speaking, 'voice.warm': warm, 'voice.shutdown': shutdown,
+        'voice.level': level, 'voice.wake': wake_config}

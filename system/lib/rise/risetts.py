@@ -44,9 +44,20 @@ def sentences(t):
     return out
 
 
+def envelope(samples, sr, ms=40):
+    n = max(1, int(sr * ms / 1000))
+    x = np.asarray(samples, dtype=np.float32)
+    k = len(x) // n
+    if k == 0:
+        return []
+    r = np.sqrt((x[:k * n].reshape(k, n) ** 2).mean(1))
+    top = float(np.percentile(r, 95)) or 1.0
+    return [round(min(1.0, v / top), 2) for v in r.tolist()]
+
+
 def player():
     while True:
-        g, path = play_q.get()
+        g, path, env = play_q.get()
         if g != gen:
             try:
                 os.remove(path)
@@ -56,12 +67,16 @@ def player():
         try:
             p = subprocess.Popen([PLAYER, path], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             cur['proc'] = p
+            # volume della frase, a passi di 40 ms: l'avatar ci muove la bocca
+            print(json.dumps({'env': env, 'step': 40}), flush=True)
             _, err = p.communicate()
             if p.returncode not in (0, -15) and err:
                 print('riproduzione:', err.decode(errors='replace')[-300:], file=sys.stderr, flush=True)
         except OSError as e:
             print('riproduzione:', e, file=sys.stderr, flush=True)
         cur['proc'] = None
+        if play_q.empty():
+            print('{"end": 1}', flush=True)
         try:
             os.remove(path)
         except OSError:
@@ -95,7 +110,7 @@ def speak(text, voice, g, speed):
             w.setsampwidth(2)
             w.setframerate(sr)
             w.writeframes(pcm)
-        play_q.put((g, path))
+        play_q.put((g, path, envelope(samples, sr)))
 
 
 synth_q = queue.Queue()

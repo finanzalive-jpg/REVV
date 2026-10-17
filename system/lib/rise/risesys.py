@@ -1100,8 +1100,71 @@ try:
     CMDS.update(riseai.CMDS)
 except Exception:  # senza il modulo l'Assistente risulta semplicemente non disponibile
     pass
-for _m in ('risevoice', 'riseweb'):
+for _m in ('risevoice', 'riseweb', 'riseapps', 'riseauto', 'riseremind'):
     try:
         CMDS.update(__import__(_m).CMDS)
     except Exception:
         pass
+
+# ---------------- sfondo del desktop ----------------
+def _wall_dir():
+    d = os.path.join(HOME, '.config', 'rise')
+    os.makedirs(d, exist_ok=True)
+    for f in os.listdir(d):                      # si tiene solo l'ultimo sfondo scelto
+        if f.startswith('sfondo-'):
+            try:
+                os.remove(os.path.join(d, f))
+            except OSError:
+                pass
+    return d
+
+
+def wall_save(a):
+    """Salva come sfondo una foto scelta dall'utente (arriva dal desktop in base64)."""
+    ext = re.sub(r'[^a-z0-9]', '', (a.get('ext') or 'jpg').lower())[:5] or 'jpg'
+    try:
+        data = base64.b64decode(a.get('data') or '')
+    except Exception:
+        return {'ok': False, 'message': 'Immagine non valida.'}
+    if len(data) < 100:
+        return {'ok': False, 'message': 'Immagine non valida.'}
+    path = os.path.join(_wall_dir(), 'sfondo-%d.%s' % (int(time.time()), ext))
+    open(path, 'wb').write(data)
+    return {'ok': True, 'path': path}
+
+
+def wall_copy(a):
+    """Usa come sfondo una foto che è già nel computer (da Esplora file o dal Visualizzatore)."""
+    import shutil as _sh
+    src = os.path.abspath(os.path.expanduser(a.get('path') or ''))
+    if not os.path.isfile(src):
+        return {'ok': False, 'message': 'Foto non trovata.'}
+    ext = os.path.splitext(src)[1].lower().lstrip('.') or 'jpg'
+    path = os.path.join(_wall_dir(), 'sfondo-%d.%s' % (int(time.time()), ext))
+    _sh.copyfile(src, path)
+    return {'ok': True, 'path': path}
+
+
+def desk_ensure(_=None):
+    d = os.path.join(HOME, 'Scrivania')
+    os.makedirs(d, exist_ok=True)
+    return {'ok': True, 'path': d}
+
+
+CMDS.update({'wall.save': wall_save, 'wall.copy': wall_copy, 'desk.ensure': desk_ensure})
+
+
+def shot_take(_=None):
+    """Foto dello schermo (grim) nella cartella Immagini."""
+    d = os.path.join(HOME, 'Immagini')
+    os.makedirs(d, exist_ok=True)
+    name = time.strftime('Schermata %Y-%m-%d alle %H.%M.%S.png')
+    path = os.path.join(d, name)
+    time.sleep(0.4)                       # il tempo di far sparire il messaggio appena scritto
+    rc, _, err = run(['grim', path], timeout=20)
+    if rc != 0 or not os.path.exists(path):
+        return {'ok': False, 'message': 'Non riesco a fotografare lo schermo. ' + err[-120:]}
+    return {'ok': True, 'path': path, 'name': name}
+
+
+CMDS.update({'shot.take': shot_take})
