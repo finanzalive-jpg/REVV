@@ -134,7 +134,9 @@ NPM="$WORK/npm"; mkdir -p "$NPM"
 "$ROOT/build/install-system.sh" "$CH" "$NPM/x"
 
 log "5/9 Configurazione di sistema"
-for d in Documenti Immagini Musica Download Video; do mkdir -p "$CH/etc/skel/$d"; done
+for d in Documenti Immagini Musica Download Video Scrivania; do mkdir -p "$CH/etc/skel/$d"; done
+# Negozio: catalogo Flathub già configurato
+chroot "$CH" flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || echo "ATTENZIONE: Flathub non configurato"
 echo rise > "$CH/etc/hostname"; printf '127.0.0.1 localhost\n127.0.1.1 rise\n' > "$CH/etc/hosts"
 grep -q XKB_DEFAULT_LAYOUT "$CH/etc/environment" || echo 'XKB_DEFAULT_LAYOUT=it' >> "$CH/etc/environment"
 chroot "$CH" sh -c '

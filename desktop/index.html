@@ -49,7 +49,7 @@ button{font:inherit;color:inherit}
 #night.on{opacity:.28}
 
 /* Icone desktop */
-#icons{position:absolute;top:14px;left:10px;display:grid;gap:4px;z-index:1}
+#icons{position:absolute;top:14px;left:10px;bottom:64px;display:grid;gap:4px;z-index:1;grid-auto-flow:column;grid-template-rows:repeat(auto-fill,92px);align-content:start}
 .dicon{width:92px;padding:8px 4px 6px;border:1px solid transparent;background:transparent;border-radius:4px;display:grid;justify-items:center;gap:5px;cursor:pointer;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 6px rgba(0,0,0,.4);font-size:.86em;line-height:1.25}
 	.dicon .icon{filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
 .dicon:hover,.dicon:focus-visible{background:linear-gradient(rgba(185,225,250,.32),rgba(120,185,230,.22));border-color:rgba(200,235,255,.65);outline:none}
@@ -364,6 +364,16 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 .ai-usb{margin:12px 0;padding:12px 14px;border:1px solid #9cc3f0;background:#eef6ff;border-radius:8px}.ai-usb p{margin:4px 0 10px;font-size:.92em}
 .ai-think-tg{font-size:.88em;display:inline-flex;align-items:center;gap:4px;margin-right:6px;cursor:pointer;white-space:nowrap}
 .ai-meteo{border-collapse:collapse;margin:8px 0 4px;font-size:.92em}.ai-meteo td{padding:3px 10px 3px 0;border-bottom:1px solid var(--line)}.ai-meteo tr.on td{font-weight:600;color:var(--accent)}
+.store{display:flex;flex-direction:column;height:100%}.sto-top{display:flex;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:#fff;flex-wrap:wrap}.sto-top>div{flex:1;min-width:220px;display:grid}.sto-top small{color:var(--ink-soft)}
+.sto-q{flex:1 1 260px;padding:8px 12px;border:1px solid var(--line);border-radius:18px;font:inherit}
+.sto-body{flex:1;overflow:auto;padding:6px 16px 16px}.sto-body h3{margin:16px 0 8px;font-size:1em;color:var(--ink-soft)}
+.sto-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.sto-card{display:grid;grid-template-columns:48px 1fr;grid-template-rows:auto auto;gap:4px 10px;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.sto-card img{width:48px;height:48px;grid-row:1/3}.sto-t{display:grid}.sto-t small{color:var(--ink-soft);font-size:.86em}.sto-a{grid-column:2;display:flex;gap:6px;align-items:center;flex-wrap:wrap}.sto-a .meter{flex:1;min-width:80px}
+.walls{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.wsw{width:46px;height:30px;border-radius:5px;border:2px solid transparent;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}.wsw[aria-pressed=true]{border-color:var(--accent)}
+#wall.custom::before,#wall.custom::after{display:none}
+.ctx{position:fixed;z-index:9999;min-width:230px;background:#fbfdff;border:1px solid #9fb3c8;border-radius:6px;box-shadow:0 6px 22px rgba(0,0,0,.3);padding:4px;display:grid}.ctx button{all:unset;padding:7px 12px;border-radius:4px;cursor:pointer;color:#1a2a3a}.ctx button:hover{background:#dcebfb}.ctx hr{border:0;border-top:1px solid #dde5ee;margin:3px 0}
+.st-item{position:relative}.st-flash{position:absolute;right:8px;top:8px;background:var(--accent);color:#fff;font-size:.8em;padding:2px 8px;border-radius:10px}
 .ai-mic{display:inline-grid;place-items:center;min-width:42px}.ai-mic.rec{background:#d83a3a;color:#fff;border-color:#b52626;transition:box-shadow .15s}
 @keyframes airec{50%{box-shadow:0 0 0 6px rgba(216,58,58,.25)}}
 .ai-voice{font:inherit;font-size:.9em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -628,7 +638,7 @@ function apply(){
   $('#night').classList.toggle('on',S.night);
   document.documentElement.style.setProperty('--accent',ACCENTS[S.accent]);
   document.body.classList.toggle('no-glass',!S.glass);
-  renderTrayNet();save();
+  renderTrayNet();save();if(typeof applyWall==='function'){applyWall();renderDesk()}
 }
 
 /* ================= App ================= */
@@ -638,6 +648,7 @@ const APPS={
  viewer:{name:'Visualizzatore',ic:'viewer',desc:'Apre foto, video, musica, PDF, Word, Excel e testo',w:800,h:560,render:renderViewer},
  notes:{name:'Note',ic:'notes',desc:'Scrivi appunti veloci, si salvano da soli',w:480,h:420,render:renderNotes},
  assistant:{name:'Assistente',ic:'assistant',desc:'Fai domande, scrivi lettere e preventivi, apri programmi. Senza internet',w:760,h:580,render:renderAssistant},
+ store:{name:'Negozio',ic:'store',desc:'Installa programmi: Chrome, Spotify, Zoom, giochi e migliaia di altri',w:900,h:620,render:renderStore},
  calc:{name:'Calcolatrice',ic:'calc',fit:1,desc:'Somme, percentuali e conti al volo',w:300,h:440,render:renderCalc},
  settings:{name:'Impostazioni',ic:'settings',desc:'Schermo, rete, audio e tutto il resto, in un posto solo',w:840,h:580,render:renderSettings}
 };
@@ -663,6 +674,7 @@ const SETS=[
  {id:'vol',sec:'suono',label:'Volume',desc:'Quanto è alto l\'audio',k:'volume audio suono alto basso muto'},
  {id:'out',sec:'suono',label:'Uscita audio',desc:'Altoparlanti o cuffie',k:'cuffie altoparlanti casse bluetooth uscita'},
  {id:'accent',sec:'aspetto',label:'Colore principale',desc:'Il colore di pulsanti e selezioni',k:'colore tema accento personalizza'},
+ {id:'wall',sec:'aspetto',label:'Sfondo',desc:'L’immagine del desktop',k:'sfondo desktop foto immagine wallpaper'},
  {id:'glass',sec:'aspetto',label:'Effetto vetro',desc:'Finestre trasparenti',k:'trasparenza vetro aero effetti prestazioni'},
  {id:'drop',sec:'condivisione',label:'Rise Drop',desc:'Ricevi e invia file a telefoni e PC vicini',k:'rise drop airdrop localsend invia ricevi file telefono condividi'},
  {id:'shares',sec:'condivisione',label:'Cartelle condivise',desc:'Cartelle che gli altri PC possono aprire',k:'condividi cartella rete samba windows'},
@@ -739,8 +751,8 @@ function renderTasks(){
 $('#peek').onclick=()=>{if(MW){const act=TOPS.some(x=>!x.minimized);TOPS.forEach(x=>SYS.call('top.action',{action:act?'minimize':'activate',id:x.id}));return}const vis=Object.keys(W).filter(k=>!W[k].min);if(vis.length)vis.forEach(k=>{W[k].el.hidden=true;W[k].min=true});TOP=null;renderTasks()};
 
 /* ================= Desktop ================= */
-$('#icons').innerHTML=DESK.map(([ic,l],i)=>`<button class="dicon" data-i="${i}">${I(ic,48)}<span>${l}</span></button>`).join('');
-$$('.dicon').forEach(b=>b.addEventListener('click',()=>DESK[b.dataset.i][2]()));
+setTimeout(()=>{renderDesk();loadDeskFiles()},0);setInterval(()=>{if(ROLE!=='app'&&document.visibilityState==='visible')loadDeskFiles()},8000);
+$('#screen').addEventListener('contextmenu',e=>{if(e.target.closest('.win'))return;e.preventDefault();deskMenu(e.clientX,e.clientY)});
 
 /* ================= Menu Start ================= */
 const startEl=$('#start'),q=$('#q'),orb=$('#orb');
@@ -770,12 +782,15 @@ function renderStart(){
              ...SETS.filter(s=>norm(s.label+' '+s.k+' '+s.desc).includes(v)).map(s=>({t:'set',s}))];
     $('#st-label').textContent='Risultati'}
   $('#st-list').innerHTML=results.length?results.map((r,i)=>r.t==='nat'
-    ?`<button class="st-item${i===0&&v?' sel':''}" data-i="${i}">${I(NICON[r.n.id]||(/chrom|firefox|brave|opera|edge/i.test(r.n.id)?'browser':'computer'),34)}<span><b>${esc(r.n.name)}</b><small>${esc(r.n.desc)}</small></span></button>`
+    ?`<button class="st-item${i===0&&v?' sel':''}" data-i="${i}">${r.n.img?`<img class="icon" src="${esc(r.n.img.startsWith('/')?'file://'+r.n.img:r.n.img)}" width="34" height="34" alt="">`:I(NICON[r.n.id]||(/chrom|firefox|brave|opera|edge/i.test(r.n.id)?'browser':'computer'),34)}<span><b>${esc(r.n.name)}</b><small>${esc(r.n.desc)}</small></span></button>`
     :r.t==='app'
     ?`<button class="st-item${i===0&&v?' sel':''}" data-i="${i}">${I(APPS[r.id].ic,34)}<span><b>${APPS[r.id].name}</b><small>${APPS[r.id].desc}</small></span></button>`
     :`<button class="st-item${i===0?' sel':''}" data-i="${i}">${I(SECTIONS.find(x=>x.id===r.s.sec).ic,34)}<span><b>${r.s.label}</b><small>${r.s.desc}</small></span><span class="st-kind">Impostazione</span></button>`).join('')
     :`<div class="st-empty">Nessun risultato per “${esc(q.value)}”. Prova con parole semplici, come “internet” o “volume”.</div>`;
   $$('.st-item').forEach(b=>b.onclick=()=>pick(results[b.dataset.i]));
+  $$('.st-item[data-i]').forEach(b=>b.oncontextmenu=e=>{e.preventDefault();const r=results[b.dataset.i];const id=r.t==='nat'?r.n.id:r.t==='app'?r.id:null;if(!id)return;
+    S.pins=S.pins||[];const on=S.pins.includes(id);S.pins=on?S.pins.filter(x=>x!==id):[...S.pins,id];apply();
+    const t=document.createElement('div');t.className='st-flash';t.textContent=on?'Tolta dal desktop':'Aggiunta al desktop';b.appendChild(t);setTimeout(()=>t.remove(),1400)});
   if(NATIVE&&v.length>=2)searchFiles(q.value.trim());
 }
 let FSQ=0;const searchFiles=debounce(async t=>{const my=++FSQ;let r;try{r=await SYS.call('fs.search',{q:t})}catch(e){return}if(my!==FSQ||norm(q.value.trim())!==norm(t))return;
@@ -1074,8 +1089,9 @@ function renderViewer(b,opts){
   b.parentElement.addEventListener('closing',clean);
   const msg=(h)=>{body.innerHTML=`<div class="vw-msg">${h}</div>`};
   function emptyState(){msg(`<div class="vw-drop">${I('viewer',64)}<b>Trascina qui un file, o premi “Apri un file”</b><p>Foto, video, musica, PDF, documenti Word, fogli Excel, file di testo e codice. Per gli altri formati Rise ti mostra comunque cosa contengono.</p><button class="btn primary" data-act="o2">Apri un file…</button></div>`);$('[data-act="o2"]',body).onclick=()=>$('#pick-file').click()}
+  let SRCPATH=null;
   async function load(f){
-    const my=++tok;clean();const k=kindOf(f.name);
+    const my=++tok;clean();const k=kindOf(f.name);SRCPATH=f.native?f.path:null;
     if(f.native){$('.vw-ic',b).innerHTML=fileIcon(f.name,22);$('.vw-name',b).textContent=f.name;msg(`<p>Apro il file…</p>`);
       try{f=await nativeFile(f)}catch(e){if(my===tok)msg(`<b>${esc(f.name)}</b><p>${esc(e.message)}</p>`);return}if(my!==tok)return}
     $('.vw-ic',b).innerHTML=fileIcon(f.name,22);$('.vw-name',b).textContent=f.name;$('.vw-meta',b).textContent=KLAB[k]+' · '+fsize(f.size);
@@ -1083,6 +1099,9 @@ function renderViewer(b,opts){
     if(f.demo){msg(`${fileIcon(f.name,72)}<b>${esc(f.name)}</b><p>Questo è solo un file di esempio, non ha un contenuto vero. Apri una cartella del tuo computer da “Esplora file” per vedere i tuoi file.</p>`);return}
     msg(`<p>Apro il file…</p>`);
     try{
+      if(k==='image'&&NATIVE&&SRCPATH){const bar=$('.vw-bar',b);let wb=$('[data-wall]',bar);if(!wb){wb=document.createElement('button');wb.className='btn';wb.dataset.wall='1';wb.textContent='Usa come sfondo';bar.insertBefore(wb,$('[data-act="open"]',bar))}
+        wb.hidden=false;const sp=SRCPATH;wb.onclick=async()=>{wb.disabled=true;const ok=await window.setWallPath(sp);wb.textContent=ok?'Fatto: è il nuovo sfondo':'Non ci sono riuscito';setTimeout(()=>{wb.disabled=false;wb.textContent='Usa come sfondo'},2500)}}
+      else{const wb=$('[data-wall]',b);if(wb)wb.hidden=true}
       if(k==='image'||k==='video'||k==='audio'){url=URL.createObjectURL(f);
         if(k==='image')body.innerHTML=`<div class="vw-media"><img src="${url}" alt="${esc(f.name)}"></div>`;
         else if(k==='video')body.innerHTML=`<div class="vw-media"><video src="${url}" controls playsinline></video></div>`;
@@ -1121,6 +1140,74 @@ function renderViewer(b,opts){
   if(opts&&opts.goto)load(opts.goto);else emptyState();
   return load;
 }
+
+/* ================= Negozio (app da Flathub) ================= */
+ICO.store='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4aa3ff"/><stop offset="1" stop-color="#1f5fd1"/></linearGradient></defs><path d="M14 22h36l-3 32a4 4 0 0 1-4 4H21a4 4 0 0 1-4-4z" fill="url(#g)"/><path d="M24 26v-6a8 8 0 0 1 16 0v6" fill="none" stroke="#1a3f8a" stroke-width="4" stroke-linecap="round"/><path d="M26 40l5 5 9-10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+function renderStore(b){
+  b.innerHTML=`<div class="store"><div class="sto-top">${I('store',30)}<div><b>Negozio</b><small>Programmi gratuiti da Flathub, il catalogo libero per Linux: si installano con un clic e si tolgono senza lasciare tracce.</small></div>
+    <input type="search" class="sto-q" placeholder="Cerca un programma (es. Chrome, Spotify, Zoom)" aria-label="Cerca"></div><div class="sto-body"><p class="note">Carico il catalogo…</p></div></div>`;
+  const body=$('.sto-body',b),qi=$('.sto-q',b);let DATA=null,poll=null,LAST=null;
+  if(!NATIVE){body.innerHTML='<p class="note">Il Negozio funziona sul PC con Rise.</p>';return}
+  const card=a=>{const j=(DATA&&DATA.jobs||{})[a.id];
+    const act=j&&j.running?`<div class="meter"><i style="width:${j.pct||3}%"></i></div><small>${esc(j.msg||'')} ${j.pct?j.pct+'%':''}</small>`
+      :a.installed?`<button class="btn primary" data-run="${esc(a.id)}">Apri</button> <button class="btn" data-rm="${esc(a.id)}" title="Disinstalla">Togli</button>`
+      :`<button class="btn primary" data-inst="${esc(a.id)}" data-name="${esc(a.name)}">Installa</button>`;
+    return `<div class="sto-card"><img src="${esc(a.icon)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><div class="sto-t"><b>${esc(a.name)}</b><small>${esc(a.desc)}</small>${j&&j.error?`<small class="err">${esc(j.error)}</small>`:''}</div><div class="sto-a">${act}</div></div>`};
+  const bind=()=>{
+    $$('[data-inst]',body).forEach(x=>x.onclick=async()=>{x.disabled=true;const r=await SYS.call('store.install',{id:x.dataset.inst,name:x.dataset.name});if(!r.ok){alert(r.message);return}watch()});
+    $$('[data-run]',body).forEach(x=>x.onclick=()=>SYS.call('store.launch',{id:x.dataset.run}));
+    $$('[data-rm]',body).forEach(x=>x.onclick=async()=>{if(!confirm('Togliere questo programma?'))return;x.disabled=true;await SYS.call('store.remove',{id:x.dataset.rm});await load();refreshNative()})};
+  const refreshNative=()=>SYS.call('native.list').then(l=>{NAPPS=l||[]}).catch(()=>{});
+  function show(){if(!DATA)return;
+    if(LAST){body.innerHTML=LAST.length?`<div class="sto-grid">${LAST.map(a=>card(Object.assign(a,{installed:(DATA.installedSet||new Set()).has(a.id)||a.installed}))).join('')}</div>`:'<p class="note">Nessun programma trovato. Prova con un altro nome.</p>';bind();return}
+    body.innerHTML=(DATA.available?'':'<p class="note err">In questa versione di Rise manca Flatpak: il Negozio non può installare.</p>')+DATA.categories.map(c=>`<h3>${esc(c.name)}</h3><div class="sto-grid">${c.apps.map(card).join('')}</div>`).join('');bind()}
+  async function load(){try{DATA=await SYS.call('store.catalog')}catch(e){body.innerHTML='<p class="note err">Non riesco ad aprire il Negozio.</p>';return}
+    DATA.installedSet=new Set(DATA.categories.flatMap(c=>c.apps.filter(a=>a.installed).map(a=>a.id)));show()}
+  function watch(){if(poll)return;poll=setInterval(async()=>{if(!b.isConnected){clearInterval(poll);return}let r;try{r=await SYS.call('store.jobs')}catch(e){return}
+      DATA.jobs=r.jobs;DATA.installedSet=new Set(r.installed);DATA.categories.forEach(c=>c.apps.forEach(a=>a.installed=DATA.installedSet.has(a.id)));
+      show();if(!Object.values(r.jobs).some(j=>j.running)){clearInterval(poll);poll=null;refreshNative()}},1000)}
+  let qt=null;qi.oninput=()=>{clearTimeout(qt);qt=setTimeout(async()=>{const v=qi.value.trim();if(!v){LAST=null;show();return}
+    body.innerHTML='<p class="note">Cerco…</p>';const r=await SYS.call('store.search',{q:v}).catch(()=>({results:[]}));LAST=r.results||[];show()},450)};
+  load();
+}
+
+/* ================= Sfondo del desktop ================= */
+const WALLS={cielo:null,
+  alba:'radial-gradient(120% 90% at 20% 110%,#ffb37a 0%,#ff7a6b 30%,#7a4fa8 62%,#1d2a5c 100%)',
+  aurora:'radial-gradient(80% 60% at 70% 30%,rgba(80,255,190,.55),transparent 60%),radial-gradient(70% 50% at 30% 40%,rgba(90,140,255,.5),transparent 60%),linear-gradient(#050b1f,#0b1d3a 60%,#061224)',
+  mare:'linear-gradient(180deg,#9fdcff 0%,#4bb3e6 38%,#137cb8 62%,#0a4a7a 100%)',
+  bosco:'radial-gradient(90% 70% at 50% 0%,#cfe9b8 0%,#7fb36a 35%,#2f6b3d 70%,#173b26 100%)',
+  notte:'radial-gradient(60% 50% at 80% 15%,rgba(255,255,255,.18),transparent 55%),linear-gradient(#0b1026,#141a3d 50%,#05070f)',
+  grafite:'linear-gradient(135deg,#2b2f36,#3d434c 50%,#1d2026)',
+  rise:'radial-gradient(70% 60% at 50% 45%,#2c6cf0 0%,#123a9a 45%,#060d24 100%)'};
+function applyWall(){const w=$('#wall');if(!w)return;const v=S.wall||'cielo';
+  if(v.startsWith('img:')){const p=v.slice(4).split('#')[0];w.style.background=`#000 url("file://${encodeURI(p)}?${v.split('#')[1]||''}") center/cover no-repeat`;w.classList.add('custom')}
+  else if(WALLS[v]){w.style.background=WALLS[v];w.classList.add('custom')}
+  else{w.style.background='';w.classList.remove('custom')}}
+async function setWallFromFile(file){if(!file)return;const buf=new Uint8Array(await file.arrayBuffer());let bin='';for(let i=0;i<buf.length;i+=0x8000)bin+=String.fromCharCode.apply(null,buf.subarray(i,i+0x8000));
+  const r=await SYS.call('wall.save',{data:btoa(bin),ext:(file.name.split('.').pop()||'jpg')});if(r&&r.ok){S.wall='img:'+r.path+'#'+Date.now();apply()}else alert((r&&r.message)||'Non riesco a usare questa foto.')}
+window.setWallPath=async p=>{const r=await SYS.call('wall.copy',{path:p});if(r&&r.ok){S.wall='img:'+r.path+'#'+Date.now();apply();return true}return false};
+
+/* ================= Icone sul desktop ================= */
+let DESKFILES=[];
+function renderDesk(){const el=$('#icons');if(!el||ROLE==='app'||ROLE==='panel'||ROLE==='popup')return;
+  const pins=(S.pins||[]).map(id=>{if(APPS[id])return {ic:I(APPS[id].ic,48),l:APPS[id].name,f:()=>openApp(id)};const n=NAPPS.find(x=>x.id===id);
+      if(n)return {ic:n.img?`<img class="icon" src="${esc(n.img.startsWith('/')?'file://'+n.img:n.img)}" width="48" height="48" alt="">`:I(NICON[n.id]||'computer',48),l:n.name,f:()=>SYS.call('native.open',{id})};return null}).filter(Boolean);
+  const files=DESKFILES.map(f=>({ic:f.dir?I('folder',48):fileIcon(f.name,48),l:f.name,f:()=>f.dir?openApp('files',{goto:'fs:'+HOMEP+'/Scrivania/'+f.name}):deskOpen(HOMEP+'/Scrivania/'+f.name,f)}));
+  const all=[...DESK.map(([ic,l,f])=>({ic:I(ic,48),l,f})),...pins,...files];
+  el.innerHTML=all.map((x,i)=>`<button class="dicon" data-i="${i}">${x.ic}<span>${esc(x.l)}</span></button>`).join('');
+  $$('.dicon',el).forEach(b=>b.addEventListener('click',()=>all[b.dataset.i].f()))}
+let HOMEP='/home/rise';
+function deskOpen(path,f){const vw=()=>openApp('viewer',{goto:{native:true,path,name:f.name,size:f.size,lastModified:f.mtime}});
+  if(/\.(docx?|odt|rtf|xlsx?|ods|csv|pptx?|odp|mp4|mkv|avi|mov|webm|m4v|mp3|flac|ogg|wav|m4a|html?)$/i.test(path))SYS.call('open.with',{path}).then(r=>{if(!r||!r.ok)vw()}).catch(vw);else vw()}
+async function loadDeskFiles(){if(!NATIVE)return;try{const e=await SYS.call('desk.ensure');HOMEP=e.path.replace(/\/Scrivania$/,'');const r=await SYS.call('fs.list',{path:e.path});
+  DESKFILES=r.ok?[...r.dirs.map(d=>Object.assign(d,{dir:true})),...r.files]:[];renderDesk()}catch(e){}}
+function deskMenu(x,y){let m=$('#desk-menu');if(m)m.remove();m=document.createElement('div');m.id='desk-menu';m.className='ctx';m.style.left=x+'px';m.style.top=y+'px';
+  m.innerHTML=`<button data-k="wall">Cambia sfondo…</button><button data-k="photo">Usa una tua foto come sfondo…</button><hr><button data-k="store">Negozio: installa programmi</button><button data-k="folder">Apri la cartella Scrivania</button><button data-k="reload">Aggiorna</button>`;
+  document.body.appendChild(m);const close=()=>m.remove();setTimeout(()=>addEventListener('click',close,{once:true}),0);
+  m.onclick=e=>{const k=e.target.dataset.k;if(!k)return;close();
+    if(k==='wall')openApp('settings',{goto:'aspetto'});if(k==='photo')pickWall();if(k==='store')openApp('store');if(k==='folder')openApp('files',{goto:'fs:~/Scrivania'});if(k==='reload')loadDeskFiles()}}
+function pickWall(){const i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=()=>setWallFromFile(i.files[0]);i.click()}
 
 /* ================= Benvenuto ================= */
 function renderWelcome(b){
@@ -1206,6 +1293,7 @@ function renderSettings(b,opts){
     }
     if(sec==='aspetto'){
       h+=row('accent','Colore principale','Il colore di pulsanti, interruttori e selezioni.',`<div class="swatches">${Object.entries(ACCENTS).map(([k,c])=>`<button class="sw" style="background:${c}" aria-label="${k}" aria-pressed="${S.accent===k}" data-a="${k}"></button>`).join('')}</div>`);
+      h+=row('wall','Sfondo','L’immagine del desktop. Puoi anche usare una tua foto.',`<div class="walls">${Object.keys(WALLS).map(k=>`<button class="wsw" data-w="${k}" aria-pressed="${(S.wall||'cielo')===k}" title="${k}" style="background:${WALLS[k]||'linear-gradient(#5ab4e8,#1d6fb3)'}"></button>`).join('')}<button class="btn" data-wphoto>Una tua foto…</button></div>`);
       h+=row('glass','Effetto vetro','Finestre trasparenti. Se il computer è vecchio e va a scatti, spegnilo.',sw('glass','Effetto vetro'));
     }
     if(sec==='condivisione'){
@@ -1290,6 +1378,7 @@ function renderSettings(b,opts){
     $$('[data-t]',main).forEach(x=>x.onclick=()=>{S.text=x.dataset.t;apply();show(cur)});
     $$('[data-o]',main).forEach(x=>x.onclick=()=>{S.out=x.dataset.o;save();show(cur)});
     $$('[data-a]',main).forEach(x=>x.onclick=()=>{S.accent=x.dataset.a;apply();show(cur)});
+    $$('[data-w]',main).forEach(x=>x.onclick=()=>{S.wall=x.dataset.w;apply();show(cur)});$$('[data-wphoto]',main).forEach(x=>x.onclick=()=>pickWall());
     $$('.conn',main).forEach(btn=>btn.onclick=()=>{
       const net=btn.closest('.net'),n=net.dataset.n;if(NATIVE){nativeConnect(net);return}
       if(net.dataset.t==='Aperta'){S.net=n;apply();show('rete');return}
