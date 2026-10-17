@@ -31,8 +31,22 @@ GPT_KIND = {'c12a7328': 'EFI System', 'e3c9e316': 'Microsoft reserved', 'ebd0a0a
             'de94bba4': 'Windows recovery environment', '0fc63daf': 'Linux filesystem', '0657fd6d': 'Linux swap'}
 
 
+def log(*a):
+    print(time.strftime('%H:%M:%S'), *a, file=sys.stderr, flush=True)
+
+
 def run(cmd, check=True, **kw):
-    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    kw.setdefault('timeout', 30)                     # nessun comando sui dischi può bloccare tutto
+    t0 = time.time()
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    except subprocess.TimeoutExpired:
+        log('TEMPO SCADUTO', ' '.join(cmd))
+        if check:
+            raise RuntimeError('il disco non risponde (%s)' % ' '.join(cmd[:2]))
+        return subprocess.CompletedProcess(cmd, 124, '', 'timeout')
+    if time.time() - t0 > 3:
+        log('lento (%.0f s):' % (time.time() - t0), ' '.join(cmd))
     if check and r.returncode != 0:
         raise RuntimeError('%s: %s' % (' '.join(cmd[:3]), (r.stderr or r.stdout).strip()[-300:]))
     return r
@@ -80,7 +94,7 @@ def boot_disk():
 
 def partitions(disk):
     """Partizioni del disco: [{path, start, end, type, fstype, label, size}] (settori)."""
-    r = run(['sfdisk', '--json', disk], check=False)
+    r = run(['sfdisk', '--json', disk], check=False, timeout=15)
     try:
         t = json.loads(r.stdout)['partitiontable']
     except (ValueError, KeyError):
@@ -101,7 +115,7 @@ def partitions(disk):
         i = info.get(p['path'], {})
         fs, lb = i.get('fstype') or '', i.get('label') or ''
         if not fs and os.path.exists(p['path']):          # senza udev: si chiede direttamente alla partizione
-            b = run(['blkid', '-o', 'export', p['path']], check=False).stdout
+            b = run(['blkid', '-o', 'export', p['path']], check=False, timeout=10).stdout
             kv = dict(l.split('=', 1) for l in b.splitlines() if '=' in l)
             fs, lb = kv.get('TYPE', '').replace('BitLocker', 'BitLocker'), kv.get('LABEL', '')
         p.update(fstype=fs, label=lb, size=(p['end'] - p['start'] + 1) * 512,
@@ -110,7 +124,7 @@ def partitions(disk):
 
 
 def free_regions(disk):
-    r = run(['sfdisk', '-F', disk], check=False)
+    r = run(['sfdisk', '-F', disk], check=False, timeout=15)
     sect = 512
     m = re.search(r'Units: sectors of \d+ \* (\d+)', r.stdout)
     if m:
@@ -125,8 +139,10 @@ def free_regions(disk):
 
 
 def scan():
+    log('scan: inizio')
     bd = boot_disk()
-    r = run(['lsblk', '-J', '-b', '-d', '-o', 'PATH,TYPE,SIZE,MODEL,RM,TRAN,RO'], check=False)
+    log('scan: chiavetta di avvio', bd)
+    r = run(['lsblk', '-J', '-b', '-d', '-o', 'PATH,TYPE,SIZE,MODEL,RM,TRAN,RO'], check=False, timeout=15)
     disks = []
     for d in json.loads(r.stdout or '{"blockdevices":[]}')['blockdevices']:
         test = d['path'] == os.environ.get('RISE_INSTALL_TEST_DISK')
@@ -136,6 +152,9 @@ def scan():
             pass                                           # solo per le prove su un disco finto
         elif str(d.get('rm')) in ('1', 'True', 'true') or d.get('tran') == 'usb' or d['path'].startswith(('/dev/zram', '/dev/loop')):
             continue
+        if not int(d.get('size') or 0):
+            continue                                       # lettore di schede vuoto e simili
+        log('scan: leggo', d['path'], d.get('model'))
         label, parts = partitions(d['path'])
         free, sect = free_regions(d['path'])
         win = any(p['fstype'] in ('ntfs', 'BitLocker') for p in parts) or any('microsoft' in p['kind'].lower() for p in parts)
@@ -144,6 +163,7 @@ def scan():
                       'sector': sect, 'windows': win,
                       'bitlocker': any(p['fstype'] == 'BitLocker' for p in parts),
                       'esp': next((p['path'] for p in parts if p['type'] == ESP_GUID or p['kind'] == 'EFI System'), None)})
+    log('scan: fatto,', len(disks), 'dischi')
     return {'ok': True, 'uefi': uefi(), 'secureBoot': secure_boot(), 'disks': disks, 'minGb': MIN_GB,
             'squashfs': next((s for s in SQUASH if os.path.exists(s)), None)}
 

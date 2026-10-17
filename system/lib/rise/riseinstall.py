@@ -19,7 +19,11 @@ def scan(_=None):
         return {'ok': False, 'message': 'Rise è già installato su questo computer.'}
     try:
         r = subprocess.run(['sudo', '-n', 'python3', TOOL, 'scan'], capture_output=True, text=True, timeout=60)
+        with open('/tmp/rise-install.log', 'a') as f:
+            f.write(r.stderr)
         res = json.loads(r.stdout or '{}')
+        if not res:
+            return {'ok': False, 'message': 'Non riesco a leggere i dischi: %s' % (r.stderr.strip().splitlines() or ['errore sconosciuto'])[-1][-200:]}
     except Exception as e:
         return {'ok': False, 'message': 'Non riesco a leggere i dischi: %s' % e}
     # file dell'Assistente già scaricati (da copiare per non riscaricarli)
