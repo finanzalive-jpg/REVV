@@ -374,6 +374,11 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 #wall.custom::before,#wall.custom::after{display:none}
 .ctx{position:fixed;z-index:9999;min-width:230px;background:#fbfdff;border:1px solid #9fb3c8;border-radius:6px;box-shadow:0 6px 22px rgba(0,0,0,.3);padding:4px;display:grid}.ctx button{all:unset;padding:7px 12px;border-radius:4px;cursor:pointer;color:#1a2a3a}.ctx button:hover{background:#dcebfb}.ctx hr{border:0;border-top:1px solid #dde5ee;margin:3px 0}
 .st-item{position:relative}.st-flash{position:absolute;right:8px;top:8px;background:var(--accent);color:#fff;font-size:.8em;padding:2px 8px;border-radius:10px}
+.mail-draft{display:grid;gap:6px;min-width:min(460px,70vw)}.mail-draft label{display:grid;gap:2px;font-size:.88em;color:var(--ink-soft)}.mail-draft input:not([type=checkbox]),.mail-draft textarea{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px;color:var(--ink)}
+.md-save{display:flex!important;align-items:center;gap:6px}.md-att{font-size:.9em}.md-act{display:flex;gap:6px;flex-wrap:wrap}.md-act .ok{color:#1d7a3a;font-weight:600}.md-act .err{color:#b3261e}
+.mbox{display:block;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px 16px;margin:8px 0}.mbox .note{margin:0 0 6px}
+.mail-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:8px 0;align-items:end}.mail-form label{display:grid;gap:3px;font-size:.9em}.mail-form input,.mail-form select{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px}.mail-act{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.rub{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}.rub span{flex:1;color:var(--ink-soft)}.rub-add{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}.rub-add input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px}
 .ai-mic{display:inline-grid;place-items:center;min-width:42px}.ai-mic.rec{background:#d83a3a;color:#fff;border-color:#b52626;transition:box-shadow .15s}
 @keyframes airec{50%{box-shadow:0 0 0 6px rgba(216,58,58,.25)}}
 .ai-voice{font:inherit;font-size:.9em;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:#fff}
@@ -661,6 +666,7 @@ const SECTIONS=[
  {id:'suono',label:'Suono',ic:'sound',lead:'Volume e da dove esce l\'audio.'},
  {id:'aspetto',label:'Aspetto',ic:'look',lead:'Colori ed effetti delle finestre.'},
  {id:'condivisione',label:'Condivisione',ic:'network',lead:'Rise Drop per scambiare file con telefoni e PC vicini, e le cartelle che condividi in rete.'},
+ {id:'assistente',label:'Assistente',ic:'assistant',lead:'Cosa può fare l’Assistente per te e il tuo account email per inviare preventivi e documenti.'},
  {id:'sistema',label:'Sistema e hardware',ic:'system',lead:'Cosa sta usando il computer e se ogni componente funziona, in parole semplici.'}
 ];
 const SETS=[
@@ -674,6 +680,8 @@ const SETS=[
  {id:'vol',sec:'suono',label:'Volume',desc:'Quanto è alto l\'audio',k:'volume audio suono alto basso muto'},
  {id:'out',sec:'suono',label:'Uscita audio',desc:'Altoparlanti o cuffie',k:'cuffie altoparlanti casse bluetooth uscita'},
  {id:'accent',sec:'aspetto',label:'Colore principale',desc:'Il colore di pulsanti e selezioni',k:'colore tema accento personalizza'},
+ {id:'perm',sec:'assistente',label:'Permessi dell’Assistente',desc:'Siti, file e cartelle, email',k:'assistente permessi autorizzazioni email posta gmail rubrica contatti'},
+ {id:'mail',sec:'assistente',label:'Account email',desc:'Per inviare preventivi e documenti',k:'email posta gmail outlook thunderbird account password invio'},
  {id:'wall',sec:'aspetto',label:'Sfondo',desc:'L’immagine del desktop',k:'sfondo desktop foto immagine wallpaper'},
  {id:'glass',sec:'aspetto',label:'Effetto vetro',desc:'Finestre trasparenti',k:'trasparenza vetro aero effetti prestazioni'},
  {id:'drop',sec:'condivisione',label:'Rise Drop',desc:'Ricevi e invia file a telefoni e PC vicini',k:'rise drop airdrop localsend invia ricevi file telefono condividi'},
@@ -1296,6 +1304,15 @@ function renderSettings(b,opts){
       h+=row('wall','Sfondo','L’immagine del desktop. Puoi anche usare una tua foto.',`<div class="walls">${Object.keys(WALLS).map(k=>`<button class="wsw" data-w="${k}" aria-pressed="${(S.wall||'cielo')===k}" title="${k}" style="background:${WALLS[k]||'linear-gradient(#5ab4e8,#1d6fb3)'}"></button>`).join('')}<button class="btn" data-wphoto>Una tua foto…</button></div>`);
       h+=row('glass','Effetto vetro','Finestre trasparenti. Se il computer è vecchio e va a scatti, spegnilo.',sw('glass','Effetto vetro'));
     }
+    if(sec==='assistente'){
+      const P=Object.assign({siti:true,file:true,email:true},S.perm||{});
+      const psw=(k,l)=>`<button class="switch" role="switch" aria-checked="${!!P[k]}" aria-label="${l}" data-perm="${k}"></button>`;
+      h+=row('perm-siti','Aprire siti e programmi','“Aprimi YouTube”, “cerca su Amazon…”, “apri Word”.',psw('siti','Siti e programmi'));
+      h+=row('perm-file','Creare cartelle, aprire file, fare PDF','“Crea una cartella Clienti sul desktop”, “aprimi il preventivo di Rossi”, “fammi il PDF”.',psw('file','File e cartelle'));
+      h+=row('perm-email','Preparare e inviare email','Prima di inviare ti mostra sempre l’email e aspetta il tuo “invia”.',psw('email','Email'));
+      h+=`</div><div class="st-label" style="padding:18px 2px 0" data-id="mail">Il tuo account email</div><div class="mbox" id="mail-box"><p class="note">${NATIVE?'Carico…':'Disponibile sul PC.'}</p></div>
+        <div class="st-label" style="padding:18px 2px 0" data-id="rubrica">Rubrica</div><div class="mbox" id="rub-box"><p class="note">${NATIVE?'Carico…':''}</p></div><div>`;
+    }
     if(sec==='condivisione'){
       h+=row('drop','Ricevi file con Rise Drop','Telefoni e PC vicini con Rise o con l’app gratuita LocalSend possono inviarti file. Ogni volta ti chiede se accettare.',NATIVE?`<button class="switch" role="switch" aria-checked="true" aria-label="Rise Drop" id="s-drop"></button>`:'<span class="tag neutral">Solo sul PC</span>',
         `<div class="drop-name"><label for="s-alias">Nome con cui ti vedono</label><input id="s-alias" value="" placeholder="Rise di casa"></div>`);
@@ -1322,6 +1339,7 @@ function renderSettings(b,opts){
     main.innerHTML=h+'</div>';main.scrollTop=y;bind();
     if(sec==='sistema'&&NATIVE)fillSys();
     if(sec==='condivisione'&&NATIVE)fillShare();
+    if(sec==='assistente'){$$('[data-perm]',main).forEach(x=>x.onclick=()=>{const P=Object.assign({siti:true,file:true,email:true},S.perm||{});P[x.dataset.perm]=!P[x.dataset.perm];S.perm=P;apply();x.setAttribute('aria-checked',String(P[x.dataset.perm]))});if(NATIVE)fillMail()}
     if(hl){const r=$(`[data-id="${hl}"]`,main);if(r){r.scrollIntoView({block:'center'});if(r.classList.contains('row')){r.classList.add('flash');setTimeout(()=>r.classList.remove('flash'),1600)}}}
   }
   function fillSys(){SYS.call('sys.info').then(r=>{const el=$('#sysinfo',main);if(!el)return;
@@ -1337,6 +1355,21 @@ function renderSettings(b,opts){
     const bw=$('#bootwhy',el);if(bw)bw.onclick=e=>{e.preventDefault();const o=$('#bootwhy-out',el);o.innerHTML='<small>Leggo i tempi…</small>';
       SYS.call('sys.bootwhy').then(w=>{o.innerHTML=`<div class="bootwhy"><small>${esc(w.total)}</small><b>Le fasi più lente:</b>${w.slow.map(x=>`<div><span>${esc(x.time)}</span> ${esc(x.unit)}</div>`).join('')}<b>Catena che ha deciso il tempo:</b>${w.chain.map(x=>`<div>${esc(x)}</div>`).join('')}</div>`}).catch(()=>{o.innerHTML='<small>Non riesco a leggere i tempi.</small>'})};
   }).catch(e=>{const el=$('#sysinfo',main);if(el)el.innerHTML=`<p class="note">Non riesco a leggere le informazioni: ${esc(e.message)}</p>`})}
+  async function fillMail(){const box=$('#mail-box',main),rb=$('#rub-box',main);if(!box)return;const m=await SYS.call('mail.get').catch(()=>null);if(!m){box.innerHTML='<p class="note">Non disponibile.</p>';return}
+    box.innerHTML=`<p class="note">${m.configured?`Collegato: <b>${esc(m.email)}</b>. L’Assistente può inviare email a nome tuo, sempre dopo la tua conferma.`:'Collega il tuo account per far inviare all’Assistente preventivi e documenti. La password resta solo su questo computer.'}</p>
+      <div class="mail-form"><label>Servizio<select id="m-prov">${Object.entries(m.providers).map(([k,v])=>`<option value="${k}"${m.provider===k?' selected':''}>${esc(v)}</option>`).join('')}</select></label>
+      <label>Il tuo nome (mittente)<input id="m-name" value="${esc(m.name||'')}" placeholder="Es. Terabyte Assist"></label>
+      <label>Indirizzo email<input id="m-mail" type="email" value="${esc(m.email||'')}" placeholder="nome@gmail.com"></label>
+      <label>Password ${'<small>(per Gmail: “password per le app”, da Account Google → Sicurezza)</small>'}<input id="m-pw" type="password" placeholder="${m.configured?'•••••••• (lascia vuoto per non cambiarla)':''}"></label></div>
+      <div class="mail-act"><button class="btn primary" id="m-save">Salva</button> <button class="btn" id="m-test"${m.configured?'':' disabled'}>Manda un’email di prova a me</button> <span id="m-msg" class="note"></span></div>
+      ${m.thunderbird?'<p class="note">Thunderbird è installato: se preferisci, l’Assistente può anche aprirti l’email già pronta in Thunderbird.</p>':''}`;
+    $('#m-save',box).onclick=async()=>{const r=await SYS.call('mail.set',{provider:$('#m-prov',box).value,name:$('#m-name',box).value.trim(),email:$('#m-mail',box).value.trim(),password:$('#m-pw',box).value});$('#m-msg',box).textContent=r.ok?'Salvato.':'Errore.';fillMail()};
+    $('#m-test',box).onclick=async()=>{$('#m-msg',box).textContent='Invio la prova…';const r=await SYS.call('mail.test');$('#m-msg',box).textContent=r.ok?'Inviata! Controlla la tua casella.':r.message};
+    const c=await SYS.call('contacts.list').catch(()=>({contacts:[]}));
+    rb.innerHTML=`${(c.contacts||[]).map(x=>`<div class="rub"><b>${esc(x.nome)}</b> <span>${esc(x.email)}</span> <button class="btn" data-rdel="${esc(x.nome)}">Togli</button></div>`).join('')||'<p class="note">Nessun contatto. L’Assistente li aggiunge da solo quando invii un’email a qualcuno di nuovo.</p>'}
+      <div class="rub-add"><input id="r-n" placeholder="Nome (es. Mario Rossi)"><input id="r-e" type="email" placeholder="email"><button class="btn" id="r-add">Aggiungi</button></div>`;
+    $$('[data-rdel]',rb).forEach(x=>x.onclick=async()=>{await SYS.call('contacts.delete',{nome:x.dataset.rdel});fillMail()});
+    $('#r-add',rb).onclick=async()=>{const r=await SYS.call('contacts.save',{nome:$('#r-n',rb).value,email:$('#r-e',rb).value});if(!r.ok)alert(r.message);fillMail()}}
   function fillShare(){
     SYS.call('drop',{action:'devices'}).then(r=>{const sw=$('#s-drop',main),al=$('#s-alias',main);if(!sw)return;if(!r.ok){sw.closest('.row').querySelector('small').textContent=r.message;return}
       sw.setAttribute('aria-checked',String(!!r.conf.receive));al.value=r.conf.alias||'';
@@ -1425,7 +1458,7 @@ const AI_SYS_TXT=`Sei l'Assistente di Rise, il sistema operativo di questo compu
 Per il meteo usa SEMPRE lo strumento meteo (dati veri e immediati). Hai accesso a internet: per notizie, prezzi, orari, persone, prodotti o qualsiasi cosa che può essere cambiata di recente usa cerca_web e poi leggi_pagina sulle fonti migliori; alla fine indica i siti usati. Se le pagine non contengono l'informazione, dillo: non inventare mai dati.
 Per un preventivo usa SEMPRE crea_preventivo: passa azienda, cliente, oggetto e le voci con quantità e prezzo unitario; i totali e l'IVA li calcola Rise. Non inventare nomi, indirizzi o prezzi: se mancano il cliente o i prezzi chiedili prima, in una sola domanda.
 Per lettere e altri documenti usa crea_documento_word con un testo completo e curato, senza segnaposto tra parentesi quadre (titoli con #, elenchi con -, tabelle con |).
-Per aprire programmi usa apri_programma; per aprire un sito (YouTube, Gmail…) o cercare un video usa apri_sito. Per trovare file del computer usa cerca_file.`;
+Per cartelle e file usa crea_cartella, apri_file, crea_pdf. Per inviare email usa prepara_email (allega_ultimo=true per il documento appena fatto): l’utente conferma sempre prima dell’invio. Per aprire programmi usa apri_programma; per aprire un sito (YouTube, Gmail…) o cercare un video usa apri_sito. Per trovare file del computer usa cerca_file.`;
 const AI_SYS=()=>AI_SYS_TXT+'\nOggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';
 const AI_TOOLS=[
  {type:'function',function:{name:'apri_programma',description:'Apre un programma del computer',parameters:{type:'object',properties:{nome:{type:'string',enum:['internet','word','excel','presentazioni','file','impostazioni','calcolatrice','note','video']}},required:['nome']}}},
@@ -1434,6 +1467,10 @@ const AI_TOOLS=[
    azienda:{type:'string',description:'Chi fa il preventivo: nome, indirizzo, partita IVA (vuoto = quella usata l’ultima volta)'},cliente:{type:'string',description:'Nome e indirizzo del cliente'},oggetto:{type:'string',description:'Di cosa si tratta, in breve'},
    voci:{type:'array',items:{type:'object',properties:{descrizione:{type:'string'},quantita:{type:'number'},prezzo:{type:'number',description:'Prezzo unitario in euro, senza IVA'}},required:['descrizione','prezzo']}},
    iva:{type:'number',description:'Percentuale IVA, di solito 22'},note:{type:'string'},pagamento:{type:'string'},validita:{type:'string'}},required:['cliente','voci']}}},
+ {type:'function',function:{name:'crea_cartella',description:'Crea una cartella sul computer',parameters:{type:'object',properties:{nome:{type:'string'},dove:{type:'string',description:'documenti, desktop, download, immagini (di base: documenti)'}},required:['nome']}}},
+ {type:'function',function:{name:'apri_file',description:'Trova e apre un file del computer (documenti Word, PDF, fogli, foto, video) cercandolo per nome',parameters:{type:'object',properties:{testo:{type:'string',description:'Parole del nome del file, es. preventivo rossi'},tipo:{type:'string',description:'word, pdf, excel, foto, video (se detto)'}},required:['testo']}}},
+ {type:'function',function:{name:'crea_pdf',description:'Crea un PDF: dal testo che scrivi tu, oppure trasformando l’ultimo documento Word creato (da_ultimo=true)',parameters:{type:'object',properties:{titolo:{type:'string'},testo:{type:'string'},da_ultimo:{type:'boolean'}}}}},
+ {type:'function',function:{name:'prepara_email',description:'Prepara un’email da inviare (l’utente la conferma prima dell’invio). Può allegare l’ultimo documento creato.',parameters:{type:'object',properties:{destinatario:{type:'string',description:'Nome in rubrica o indirizzo email'},oggetto:{type:'string'},testo:{type:'string'},allega_ultimo:{type:'boolean',description:'Allega l’ultimo documento creato o aperto'},formato_allegato:{type:'string',description:'pdf o word'}},required:['destinatario','oggetto','testo']}}},
  {type:'function',function:{name:'apri_sito',description:'Apre un sito nel browser (YouTube, Google, Gmail, Amazon, un indirizzo web) o una ricerca su YouTube',parameters:{type:'object',properties:{sito:{type:'string',description:'Nome del sito o indirizzo, es. youtube, gmail, www.repubblica.it'},cerca:{type:'string',description:'Cosa cercare nel sito, se richiesto (es. video da cercare su YouTube)'}},required:['sito']}}},
  {type:'function',function:{name:'meteo',description:'Previsioni del tempo di una città: oggi, domani e i prossimi 7 giorni',parameters:{type:'object',properties:{citta:{type:'string'}},required:['citta']}}},
  {type:'function',function:{name:'cerca_web',description:'Cerca su internet e restituisce i primi risultati (titolo, indirizzo, riassunto)',parameters:{type:'object',properties:{testo:{type:'string',description:'Cosa cercare'}},required:['testo']}}},
@@ -1533,14 +1570,29 @@ function renderAssistant(b){
     mic.onclick=micDown;
     send.onclick=()=>{if(busy&&ctrl){ctrl.abort();return}go()};
     async function runTool(name,args){
+      const P=Object.assign({siti:true,file:true,email:true},S.perm||{});
+      if(/^(apri_sito|apri_programma)$/.test(name)&&!P.siti)return 'L’utente non ha dato il permesso di aprire siti e programmi (Impostazioni → Assistente).';
+      if(/^(crea_cartella|apri_file|crea_pdf)$/.test(name)&&!P.file)return 'L’utente non ha dato il permesso di gestire file e cartelle (Impostazioni → Assistente).';
+      if(name==='prepara_email'&&!P.email)return 'L’utente non ha dato il permesso di inviare email (Impostazioni → Assistente).';
+      if(name==='crea_cartella'){const r=await SYS.call('auto.mkdir',{nome:args.nome,dove:args.dove});if(!r.ok)return r.message;
+        add('tool',`${I('folder',20)} ${r.existed?'C’era già':'Ho creato'} la cartella <b>${esc(args.nome)}</b> in ${esc(r.where)}.`);LASTDIR=r.path;return 'Cartella pronta: '+r.path}
+      if(name==='apri_file'){const r=await SYS.call('auto.find',{testo:args.testo,tipo:args.tipo||''});const L=r.results||[];
+        if(!L.length)return 'Nessun file trovato con quelle parole.';
+        if(L.length>1&&!/ultim/.test(args.testo||'')){add('tool',`${I('files',20)} Ho trovato ${L.length} file: ${L.slice(0,5).map(f=>`<button class="btn" data-openf="${esc(f.path)}">${esc(f.name)}</button>`).join(' ')}`);bindOpenF();return 'Trovati più file: '+L.slice(0,5).map(f=>f.name).join('; ')+'. Ho mostrato i pulsanti: chiedi quale aprire, oppure apri il primo se è chiaramente quello giusto.'}
+        openFile(L[0]);return 'Aperto '+L[0].name}
+      if(name==='crea_pdf'){const r=await SYS.call('auto.pdf',args.da_ultimo&&LASTDOC?{da_file:LASTDOC}:{titolo:args.titolo,testo:args.testo});if(!r.ok)return r.message;
+        LASTDOC=r.path;SYS.call('open.with',{path:r.path}).catch(()=>{});add('tool',`${I('m-pdf',20)} Ho creato <b>${esc(r.name)}</b> in Documenti.`);return 'PDF creato: '+r.name}
+      if(name==='prepara_email'){let att=[];if(args.allega_ultimo&&LASTDOC){let p=LASTDOC;if(/pdf/i.test(args.formato_allegato||'')&&!/\.pdf$/i.test(p)){const r=await SYS.call('auto.pdf',{da_file:p});if(r.ok)p=r.path}att=[p]}
+        const d=await SYS.call('mail.prepare',{a:args.destinatario,oggetto:args.oggetto,testo:args.testo,allegati:att});showDraft(d);
+        return d.to?'Email pronta per '+d.to+': aspetto che l’utente dica “invia”. Non dire che è già stata inviata.':'Non conosco l’indirizzo di '+args.destinatario+': l’ho chiesto all’utente nel riquadro.'}
       if(name==='apri_programma'){const map={internet:['nat','browser'],word:['nat','word'],excel:['nat','sheet'],presentazioni:['nat','deck'],video:['nat','player'],file:['app','files'],impostazioni:['app','settings'],calcolatrice:['app','calc'],note:['app','notes']};
         const t=map[(args.nome||'').toLowerCase()];if(!t)return 'Programma non trovato.';
         if(t[0]==='app'){openApp(t[1]);return 'Aperto.'}const r=await SYS.call('native.open',{id:t[1]});return r.ok?'Aperto.':(r.message||'Non riesco ad aprirlo.')}
       if(name==='crea_documento_word'){const r=await SYS.call('doc.create',{title:args.titolo||'Documento',text:args.testo||''});
-        if(!r.ok)return 'Non sono riuscito a creare il documento.';SYS.call('open.with',{path:r.path}).catch(()=>{});
+        if(!r.ok)return 'Non sono riuscito a creare il documento.';LASTDOC=r.path;SYS.call('open.with',{path:r.path}).catch(()=>{});
         add('tool',`${I('m-word',20)} Ho creato <b>${esc(r.name)}</b> nella cartella Documenti e l'ho aperto.`);return 'Creato e aperto: '+r.name}
       if(name==='crea_preventivo'){const r=await SYS.call('doc.preventivo',args||{});
-        if(!r.ok)return 'Non sono riuscito a creare il preventivo.';SYS.call('open.with',{path:r.path}).catch(()=>{});
+        if(!r.ok)return 'Non sono riuscito a creare il preventivo.';LASTDOC=r.path;SYS.call('open.with',{path:r.path}).catch(()=>{});
         add('tool',`${I('m-word',20)} Ho creato <b>${esc(r.name)}</b> (totale ${esc(r.totale||'')}) nella cartella Documenti e l'ho aperto.`);return 'Creato e aperto: '+r.name+', totale '+(r.totale||'')}
       if(name==='apri_sito'){const n=(args.sito||'').toLowerCase().trim(),q=(args.cerca||'').trim();
         const known={youtube:'https://www.youtube.com',google:'https://www.google.it',gmail:'https://mail.google.com',amazon:'https://www.amazon.it',facebook:'https://www.facebook.com',instagram:'https://www.instagram.com',whatsapp:'https://web.whatsapp.com',maps:'https://www.google.com/maps',wikipedia:'https://it.wikipedia.org',netflix:'https://www.netflix.com',spotify:'https://open.spotify.com',ebay:'https://www.ebay.it'};
@@ -1555,13 +1607,47 @@ function renderAssistant(b){
         const r=await SYS.call('web.read',{url:args.url||''});if(!r.ok)return r.message||'Pagina non disponibile.';return (r.title?r.title+'\n':'')+r.url+'\n\n'+r.text}
       if(name==='cerca_file'){const r=await SYS.call('fs.search',{q:args.testo||''});const L=(r.results||[]).slice(0,8).map(x=>x.path);return L.length?L.join('\n'):'Nessun file trovato.'}
       return 'Strumento sconosciuto.'}
+    // ---- ultimo documento, file trovati, bozza dell'email da confermare
+    let LASTDOC=null,LASTDIR=null,DRAFT=null;
+    function openFile(f){LASTDOC=f.path;const vw=()=>openApp('viewer',{goto:{native:true,path:f.path,name:f.name,size:f.size,lastModified:f.mtime}});
+      if(/\.(docx?|odt|rtf|xlsx?|ods|csv|pptx?|odp|mp4|mkv|avi|mov|webm|m4v|mp3|flac|ogg|wav|m4a)$/i.test(f.path))SYS.call('open.with',{path:f.path}).then(r=>{if(!r||!r.ok)vw()}).catch(vw);else vw();
+      add('tool',`${fileIcon(f.name,20)} Apro <b>${esc(f.name)}</b> <small>(${esc(f.folder||'')})</small>`)}
+    function bindOpenF(){$$('[data-openf]',log).forEach(x=>x.onclick=()=>{const p=x.dataset.openf;openFile({path:p,name:p.split('/').pop()})})}
+    function showDraft(d){DRAFT=d;const acc=d.account||{};const box=add('bot',`<div class="mail-draft"><b>${I('share',18)} Email pronta</b>
+        <label>A <input class="md-to" value="${esc(d.to||'')}" placeholder="indirizzo email di ${esc(d.label||'')}"></label>${!d.to?`<label class="md-save"><input type="checkbox" checked> Salva in rubrica come “${esc(d.label||'')}”</label>`:''}
+        <label>Oggetto <input class="md-subj" value="${esc(d.oggetto)}"></label><textarea class="md-body" rows="5">${esc(d.testo)}</textarea>
+        ${d.allegati.length?`<div class="md-att">📎 ${d.allegati.map(a=>esc(a.name)).join(', ')}</div>`:''}
+        <div class="md-act">${acc.configured?'<button class="btn primary" data-send>Invia</button>':''}${acc.thunderbird?'<button class="btn" data-tb>Apri in Thunderbird</button>':''}<button class="btn" data-gm>Apri in Gmail</button><button class="btn" data-cancel>Annulla</button></div>
+        ${acc.configured?'<small>Puoi anche dire “invia” o “annulla”.</small>':'<small>Per inviare direttamente da qui collega il tuo account in Impostazioni → Assistente. <a href="#" data-acc>Collega ora</a></small>'}</div>`);
+      const g=()=>({a:$('.md-to',box).value.trim()||d.to,oggetto:$('.md-subj',box).value,testo:$('.md-body',box).value,allegati:d.allegati.map(x=>x.path)});
+      const done=(m,ok)=>{$('.md-act',box).innerHTML=`<span class="${ok?'ok':'err'}">${esc(m)}</span>`;DRAFT=ok?null:DRAFT};
+      box._send=async()=>{const x=g();if(!/@/.test(x.a||'')){done('Manca l’indirizzo email.',false);return}const sv=$('.md-save input',box);if(sv&&sv.checked&&d.label)SYS.call('contacts.save',{nome:d.label,email:x.a});
+        $('.md-act',box).innerHTML='<small>Invio…</small>';const r=await SYS.call('mail.send',x);done(r.ok?'Inviata a '+r.to+'.':r.message,r.ok);speak(r.ok?'Email inviata.':'Non sono riuscita a inviarla.')};
+      DRAFT.box=box;const b0=$('[data-send]',box);if(b0)b0.onclick=box._send;
+      const tb=$('[data-tb]',box);if(tb)tb.onclick=async()=>{await SYS.call('mail.thunderbird',g());done('Aperta in Thunderbird: controlla e premi Invia.',true)};
+      $('[data-gm]',box).onclick=async()=>{const x=g();const url='https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(x.a||'')+'&su='+encodeURIComponent(x.oggetto)+'&body='+encodeURIComponent(x.testo);await openUrl(url);
+        if(x.allegati.length)openApp('files',{goto:'fs:'+x.allegati[0].replace(/\/[^/]*$/,'')});done(x.allegati.length?'Aperta in Gmail: trascina l’allegato dalla finestra della cartella.':'Aperta in Gmail.',true)};
+      $('[data-cancel]',box).onclick=()=>done('Annullata.',true);const ac=$('[data-acc]',box);if(ac)ac.onclick=e=>{e.preventDefault();openApp('settings',{goto:'assistente'})};
+      speak(d.to?`Ho preparato l'email per ${d.label||d.to}. Vuoi che la invii?`:`Non ho l'indirizzo email di ${d.label}. Scrivilo nel riquadro.`)}
     // ---- comandi rapidi: le richieste semplici si eseguono subito, senza aspettare il "cervello"
     const SITES={youtube:'https://www.youtube.com',gmail:'https://mail.google.com',google:'https://www.google.it',amazon:'https://www.amazon.it',facebook:'https://www.facebook.com',instagram:'https://www.instagram.com',whatsapp:'https://web.whatsapp.com',maps:'https://www.google.com/maps',mappe:'https://www.google.com/maps',wikipedia:'https://it.wikipedia.org',netflix:'https://www.netflix.com',spotify:'https://open.spotify.com',ebay:'https://www.ebay.it',chatgpt:'https://chatgpt.com',repubblica:'https://www.repubblica.it',corriere:'https://www.corriere.it'};
     const APPN={word:['nat','word'],documento:['nat','word'],wordcraft:['nat','word'],excel:['nat','sheet'],foglio:['nat','sheet'],gridcraft:['nat','sheet'],presentazion:['nat','deck'],powerpoint:['nat','deck'],deckcraft:['nat','deck'],browser:['nat','browser'],internet:['nat','browser'],calcolatrice:['app','calc'],impostazioni:['app','settings'],file:['app','files'],esplora:['app','files'],cartell:['app','files'],note:['app','notes'],video:['nat','player']};
     const openUrl=async url=>{const r=await SYS.call('native.open',{id:'browser',url}).catch(()=>({ok:false}));if(!r.ok&&window.openSite)window.openSite(url)};
     const reply=(html,spoken,q)=>{add('bot',html);msgs.push({role:'assistant',content:spoken});speak(spoken)};
     async function quick(q){
-      const t=q.toLowerCase().replace(/[?!.]+$/,'').trim();let m;
+      const t=q.toLowerCase().replace(/[?!.]+$/,'').trim();let m;const P=Object.assign({siti:true,file:true,email:true},S.perm||{});
+      // conferma dell'email preparata
+      if(DRAFT&&DRAFT.box){if(/^(s[iì]|ok|invia(la)?|manda(la)?|vai|procedi|conferma)(\s|$)/.test(t)){DRAFT.box._send();return true}
+        if(/^(no|annulla|lascia stare|non inviare)/.test(t)){DRAFT=null;reply('Va bene, non la invio.','Va bene, non la invio.');return true}}
+      // cartelle: "crea una cartella clienti sul desktop"
+      if(P.file&&(m=q.trim().replace(/[?!.]+$/,'').match(/^(?:crea(?:mi)?|fammi|nuova)\s+(?:una\s+)?(?:nuova\s+)?cartella\s+(?:chiamata\s+|di nome\s+|con nome\s+)?(.+?)(?:\s+(?:sul|sulla|nel|nella|in)\s+(desktop|scrivania|documenti|download|immagini|musica|video))?$/i))){
+        const r=await SYS.call('auto.mkdir',{nome:m[1].replace(/^["“']|["”']$/g,''),dove:(m[2]||'documenti').toLowerCase()});if(r.ok){reply(`${I('folder',18)} ${r.existed?'C’era già':'Ho creato'} la cartella <b>${esc(m[1])}</b> in ${esc(r.where)}.`,(r.existed?'C’era già la cartella ':'Ho creato la cartella ')+m[1]+'.');openApp('files',{goto:'fs:'+r.path});return true}}
+      // file: "aprimi il file preventivo rossi", "apri l'ultimo pdf"
+      if(P.file&&(m=t.match(/^apri(?:mi)?\s+(?:il\s+file|l'ultimo|l’ultimo|l'ultima|l’ultima|il\s+documento|il\s+preventivo|la\s+foto|il\s+pdf)\s*(.*)$/))){
+        const word=/^apri(?:mi)?\s+il\s+preventivo/.test(t)?'preventivo ':'';const r=await SYS.call('auto.find',{testo:(/ultim/.test(t)?'ultimo ':'')+word+m[1]}).catch(()=>({results:[]}));const L=r.results||[];
+        if(L.length===1||(L.length&&/ultim/.test(t))){openFile(L[0]);msgs.push({role:'assistant',content:'Aperto '+L[0].name});speak('Ecco '+L[0].name.replace(/\.[^.]+$/,''));return true}
+        if(L.length>1){add('bot',`Ho trovato più file, quale apro? ${L.slice(0,6).map(f=>`<button class="btn" data-openf="${esc(f.path)}">${esc(f.name)}</button>`).join(' ')}`);bindOpenF();speak('Ho trovato più file, quale apro?');return true}
+        reply('Non ho trovato file con quel nome. Prova con altre parole del nome.','Non ho trovato file con quel nome.');return true}
       // YouTube: "cercami su youtube X", "metti su youtube X", "fammi vedere X su youtube"
       if((m=t.match(/^(?:cerca(?:mi)?|metti(?:mi)?|fammi (?:vedere|sentire)|trova(?:mi)?|apri(?:mi)?)\s+(?:su youtube\s+)?(.+?)\s+su youtube$/))||(m=t.match(/^(?:cerca(?:mi)?|metti(?:mi)?|trova(?:mi)?)\s+su youtube\s+(.+)$/))){
         const url='https://www.youtube.com/results?search_query='+encodeURIComponent(m[1]);await openUrl(url);reply(`${I('browser',18)} Ho aperto YouTube con la ricerca <b>${esc(m[1])}</b>.`,'Ecco i video di '+m[1]+' su YouTube.');return true}
@@ -1628,7 +1714,8 @@ function renderAssistant(b){
         msgs.push({role:'assistant',content:text||'',tool_calls:list.map(c=>({id:c.id,type:'function',function:{name:c.name,arguments:c.args||'{}'}}))});
         let needMore=false;
         for(const c of list){let a={};try{a=JSON.parse(c.args||'{}')}catch(e){}const r=await runTool(c.name,a);msgs.push({role:'tool',tool_call_id:c.id,content:r});if(/^(cerca_file|cerca_web|leggi_pagina|meteo)$/.test(c.name))needMore=true}
-        if(!needMore){const done=list.some(c=>c.name==='apri_sito')?'Fatto, l’ho aperto nel browser.':list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
+        if(!needMore){if(list.some(c=>c.name==='prepara_email')){msgs.push({role:'assistant',content:'Email pronta, aspetto conferma.'});break}
+          const done=list.some(c=>c.name==='apri_sito')?'Fatto, l’ho aperto nel browser.':list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
           msgs.push({role:'assistant',content:done});add('bot',esc(done));speak(done);break}}
       }catch(e){if(e.name==='AbortError'){if(out&&$('.ai-dots',out))out.innerHTML='<small class="ai-phase">Interrotto.</small>'}else add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
       clearInterval(tick);

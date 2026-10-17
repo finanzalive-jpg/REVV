@@ -115,6 +115,12 @@ if chroot "$CH" python3 -m venv /opt/kokoro && chroot "$CH" /opt/kokoro/bin/pip 
 else
   echo "ATTENZIONE: Kokoro non installato, la voce userà Piper"; rm -rf "$CH/opt/kokoro"
 fi
+# PDF dell'Assistente (preventivi e documenti in PDF): fpdf2, licenza LGPL
+if chroot "$CH" python3 -m venv /opt/rise-py && chroot "$CH" /opt/rise-py/bin/pip install -q --no-cache-dir fpdf2; then
+  echo "fpdf2: ok"; find "$CH/opt/rise-py" -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+else
+  echo "ATTENZIONE: fpdf2 non installato, niente PDF dall'Assistente"
+fi
 PURL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
 mkdir -p /tmp/piper-dl
 if curl -fsSL -o /tmp/piper-dl/p.tgz "$PURL" && tar xzf /tmp/piper-dl/p.tgz -C /tmp/piper-dl; then
