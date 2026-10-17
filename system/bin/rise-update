@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""Rise – aggiornamenti dal web, senza reinstallare.
+
+    rise-update check      dice se c'è una versione nuova (non serve essere amministratore)
+    rise-update apply      scarica, verifica e installa l'aggiornamento (come root)
+    rise-update rollback   torna alla versione precedente (come root)
+
+Il pacchetto viene preparato da GitHub a ogni modifica (build/make-update.sh) e pubblicato nella
+release "updates": rise-update.json (versione, impronta SHA-256) + rise-update.tar.gz.
+Si aggiornano solo le parti di Rise (desktop, Assistente, programmi di Rise, impostazioni di sistema
+di Rise); i file e le impostazioni dell'utente non vengono toccati. La versione precedente resta
+in /var/lib/rise-update/prev per poter tornare indietro.
+"""
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import time
+import urllib.request
+
+REPO = 'finanzalive-jpg/RISE'
+MANIFEST = 'https://github.com/%s/releases/download/updates/rise-update.json' % REPO
+TARGET = os.environ.get('RISE_UPDATE_TARGET', '/')   # per le prove: un'altra cartella al posto di /
+LOCAL = os.path.join(TARGET, 'etc/rise-build')
+STATE = os.path.join(TARGET, 'var/lib/rise-update')
+STATUS = os.path.join(STATE, 'status.json')
+# cartelle sostituite per intero; il resto (file singoli) viene copiato sopra
+REPLACE_DIRS = ('usr/local/lib/rise', 'opt/rise')
+# mai sovrascritti: li personalizza l'installazione (utente, accesso automatico)
+KEEP = ('etc/greetd/config.toml', 'etc/casper.conf', 'etc/hostname', 'etc/hosts')
+
+
+def _conf():
+    c = {'manifest': MANIFEST}
+    try:
+        for line in open(os.path.join(TARGET, 'etc/rise-update.conf')):
+            if '=' in line and not line.lstrip().startswith('#'):
+                k, v = line.split('=', 1)
+                c[k.strip()] = v.strip()
+    except OSError:
+        pass
+    return c
+
+
+def local_build():
+    try:
+        return json.load(open(LOCAL))
+    except (OSError, ValueError):
+        return {'build': 0, 'version': 'sconosciuta'}
+
+
+def _get(url, timeout=20):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Rise-update', 'Cache-Control': 'no-cache'})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def check():
+    cur = local_build()
+    try:
+        url = _conf()['manifest']
+        if url.startswith('http'):
+            url += '?t=%d' % int(time.time())        # niente copie vecchie in cache
+        with _get(url) as r:
+            m = json.load(r)
+    except Exception as e:
+        return {'ok': False, 'current': cur, 'message': 'Non riesco a controllare gli aggiornamenti (%s).' % e}
+    avail = int(m.get('build', 0)) > int(cur.get('build', 0))
+    return {'ok': True, 'current': cur, 'latest': m, 'available': avail}
+
+
+def _status(**kw):
+    os.makedirs(STATE, exist_ok=True)
+    try:
+        st = json.load(open(STATUS))
+    except (OSError, ValueError):
+        st = {}
+    st.update(kw, time=int(time.time()))
+    tmp = STATUS + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(st, f, ensure_ascii=False)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, STATUS)
+
+
+def _safe_members(tar):
+    for m in tar.getmembers():
+        n = m.name
+        if n.startswith('/') or '..' in n.split('/') or m.isdev():
+            raise RuntimeError('pacchetto non valido: %s' % n)
+        if (m.issym() or m.islnk()) and (m.linkname.startswith('/') or '..' in m.linkname.split('/')):
+            raise RuntimeError('collegamento non valido nel pacchetto: %s' % n)
+        yield m
+
+
+def _files(root):
+    for dp, dns, fns in os.walk(root):
+        for f in fns:
+            full = os.path.join(dp, f)
+            yield os.path.relpath(full, root)
+
+
+def _install_tree(src_root, backup):
+    """Copia l'albero nuovo sul sistema; prima mette da parte quello vecchio in backup."""
+    if os.path.isdir(backup):
+        shutil.rmtree(backup)
+    os.makedirs(backup)
+    # 1) cartelle sostituite per intero
+    for d in REPLACE_DIRS:
+        new, dst = os.path.join(src_root, d), os.path.join(TARGET, d)
+        if not os.path.isdir(new):
+            continue
+        if os.path.isdir(dst):
+            shutil.copytree(dst, os.path.join(backup, d), symlinks=True)
+        tmp = dst + '.rise-new'
+        if os.path.exists(tmp):
+            shutil.rmtree(tmp)
+        shutil.copytree(new, tmp, symlinks=True)
+        old = dst + '.rise-old'
+        if os.path.exists(old):
+            shutil.rmtree(old)
+        if os.path.exists(dst):
+            os.rename(dst, old)
+        os.rename(tmp, dst)
+        if os.path.exists(old):
+            shutil.rmtree(old)
+    # 2) file singoli (programmi in /usr/local/bin, impostazioni di Rise in /etc, temi…)
+    for rel in _files(src_root):
+        if any(rel == d or rel.startswith(d + '/') for d in REPLACE_DIRS) or rel in KEEP:
+            continue
+        src, dst = os.path.join(src_root, rel), os.path.join(TARGET, rel)
+        if os.path.exists(dst):
+            b = os.path.join(backup, rel)
+            os.makedirs(os.path.dirname(b), exist_ok=True)
+            shutil.copy2(dst, b, follow_symlinks=False)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        tmp = dst + '.rise-new'
+        shutil.copy2(src, tmp, follow_symlinks=False)
+        os.replace(tmp, dst)
+    sd = os.path.join(TARGET, 'etc/sudoers.d')
+    if os.path.isdir(sd):
+        for f in os.listdir(sd):
+            if f.startswith('rise'):
+                os.chmod(os.path.join(sd, f), 0o440)
+
+
+def _packages(listfile):
+    """Pacchetti di sistema nuovi richiesti dalla nuova versione (se mancano)."""
+    try:
+        wanted = [w for l in open(listfile) for w in l.split('#')[0].split()]
+    except OSError:
+        return []
+    r = subprocess.run(['dpkg-query', '-W', '-f', '${Package} ${db:Status-Status}\n'] + wanted,
+                       capture_output=True, text=True)
+    have = {l.split()[0] for l in r.stdout.splitlines() if l.endswith(' installed')}
+    missing = [p for p in wanted if p not in have]
+    if not missing:
+        return []
+    _status(phase='packages', message='Installo i componenti di sistema nuovi (%d)…' % len(missing))
+    env = dict(os.environ, DEBIAN_FRONTEND='noninteractive')
+    subprocess.run(['apt-get', 'update', '-qq'], env=env, timeout=600, capture_output=True)
+    still = []
+    for p in missing:                       # uno alla volta: un pacchetto sparito non blocca gli altri
+        r = subprocess.run(['apt-get', 'install', '-y', '-qq', '--no-install-recommends', p], env=env,
+                           timeout=1200, capture_output=True, text=True)
+        if r.returncode != 0:
+            still.append(p)
+    return still
+
+
+def apply():
+    if os.geteuid() != 0:
+        print('serve root', file=sys.stderr)
+        return 1
+    os.makedirs(STATE, exist_ok=True)
+    lock = os.path.join(STATE, 'lock')
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+    except FileExistsError:
+        try:
+            pid = int(open(lock).read() or 0)
+            os.kill(pid, 0)
+            print('aggiornamento già in corso')
+            return 0
+        except (ValueError, OSError):
+            os.remove(lock)
+            return apply()
+    try:
+        _status(phase='check', message='Controllo…', pct=0, error=None, done=False)
+        c = check()
+        if not c.get('ok'):
+            raise RuntimeError(c.get('message'))
+        if not c['available']:
+            _status(phase='done', message='Rise è già aggiornato.', pct=100, done=True)
+            return 0
+        m = c['latest']
+        work = os.path.join(STATE, 'work')
+        shutil.rmtree(work, ignore_errors=True)
+        os.makedirs(work)
+        pkg = os.path.join(work, 'rise-update.tar.gz')
+        _status(phase='download', message='Scarico la versione %s…' % m.get('version', ''), pct=0)
+        h = hashlib.sha256()
+        with _get(m['url'], timeout=60) as r, open(pkg, 'wb') as out:
+            total, done = int(r.headers.get('Content-Length') or m.get('size') or 0), 0
+            while True:
+                buf = r.read(1 << 18)
+                if not buf:
+                    break
+                out.write(buf)
+                h.update(buf)
+                done += len(buf)
+                if total:
+                    _status(pct=int(done * 100 / total))
+        if h.hexdigest() != m.get('sha256'):
+            raise RuntimeError('il pacchetto scaricato non corrisponde (impronta diversa): non lo installo')
+        _status(phase='install', message='Installo…', pct=100)
+        with tarfile.open(pkg) as t:
+            try:
+                t.extractall(work, members=list(_safe_members(t)), filter='data')
+            except TypeError:
+                t.extractall(work, members=list(_safe_members(t)))
+        root = os.path.join(work, 'root')
+        if not os.path.isdir(os.path.join(root, 'opt', 'rise')):
+            raise RuntimeError('pacchetto incompleto')
+        prev = os.path.join(STATE, 'prev')
+        old_build = local_build()
+        try:
+            _install_tree(root, prev)
+        except Exception:
+            _restore(prev)
+            raise
+        with open(os.path.join(prev, 'rise-build.json'), 'w') as f:
+            json.dump(old_build, f)
+        failed = _packages(os.path.join(work, 'packages.txt')) if TARGET == '/' else []
+        meta = {'build': m['build'], 'version': m.get('version'), 'commit': m.get('commit'), 'date': m.get('date')}
+        with open(LOCAL + '.tmp', 'w') as f:
+            json.dump(meta, f)
+        os.replace(LOCAL + '.tmp', LOCAL)
+        if TARGET == '/':
+            subprocess.run(['systemctl', 'daemon-reload'], capture_output=True)
+        shutil.rmtree(work, ignore_errors=True)
+        msg = 'Fatto! Rise %s è installato. Riavvia il computer per usarlo.' % m.get('version', '')
+        if failed:
+            msg += ' (Non sono riuscito a installare: %s — riproverò al prossimo aggiornamento.)' % ', '.join(failed)
+        _status(phase='done', message=msg, pct=100, done=True, restart=True, version=m.get('version'))
+        return 0
+    except Exception as e:
+        _status(phase='error', message='Aggiornamento non riuscito: %s' % e, error=str(e), done=True)
+        return 1
+    finally:
+        try:
+            os.remove(lock)
+        except OSError:
+            pass
+
+
+def _restore(prev):
+    for rel in _files(prev):
+        if rel == 'rise-build.json':
+            continue
+        dst = os.path.join(TARGET, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(os.path.join(prev, rel), dst, follow_symlinks=False)
+
+
+def rollback():
+    if os.geteuid() != 0:
+        print('serve root', file=sys.stderr)
+        return 1
+    prev = os.path.join(STATE, 'prev')
+    if not os.path.isdir(prev):
+        _status(phase='error', message='Non c’è una versione precedente.', done=True)
+        return 1
+    for d in REPLACE_DIRS:
+        if os.path.isdir(os.path.join(prev, d)) and os.path.isdir(os.path.join(TARGET, d)):
+            shutil.rmtree(os.path.join(TARGET, d))
+    _restore(prev)
+    try:
+        shutil.copy2(os.path.join(prev, 'rise-build.json'), LOCAL)
+    except OSError:
+        pass
+    _status(phase='done', message='Sono tornato alla versione precedente. Riavvia il computer.', done=True, restart=True)
+    return 0
+
+
+if __name__ == '__main__':
+    cmd = sys.argv[1] if len(sys.argv) > 1 else 'check'
+    if cmd == 'check':
+        print(json.dumps(check(), ensure_ascii=False))
+    elif cmd == 'apply':
+        sys.exit(apply())
+    elif cmd == 'rollback':
+        sys.exit(rollback())
+    else:
+        print(__doc__)
+        sys.exit(2)

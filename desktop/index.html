@@ -365,6 +365,15 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 html[data-role=app] #figure,html[data-role=panel] #figure,html[data-role=popup] #figure{display:none}
 .ai-wake-st{display:block;margin-top:4px;color:var(--ink-soft);font-size:.85em;max-width:340px}
 .ai-gpu{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:5px}
+#upd-box .ok{color:#1d7a3a}#upd-box .err{color:#b3261e}#upd-box .btn{margin:4px 6px 0 0}#upd-box ul{margin:6px 0 6px 18px;font-size:.92em}
+.inst{height:100%;overflow:auto}.inst-body{padding:18px 24px}.inst h2{margin:0 0 10px}.ihero{display:flex;gap:16px;align-items:center;margin-bottom:10px}
+.iok{background:#eaf7ee;border:1px solid #9fd3ad;border-radius:8px;padding:10px 14px;margin:12px 0}.ilist{list-style:none;padding:0;margin:10px 0;display:grid;gap:6px}.iwarn{background:#fff6e5;border:1px solid #f0c36d;border-radius:8px;padding:10px 14px;margin:12px 0}.iwarn p,.iwarn ol{margin:6px 0}.iwarn li{margin:3px 0}
+.iact{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.idisk{margin:10px 0}.dbar{display:flex;height:34px;border-radius:6px;overflow:hidden;margin:6px 0;border:1px solid var(--line)}
+.dbar i{display:flex;align-items:center;justify-content:center;font-style:normal;font-size:.78em;color:#fff;min-width:4px;border-right:1px solid rgba(255,255,255,.6);overflow:hidden;white-space:nowrap}
+.dbar .win,.ileg .win::before{background:#2f7fd6}.dbar .efi,.ileg .efi::before{background:#8a6bd1}.dbar .sys,.ileg .sys::before{background:#8796a8}.dbar .oth{background:#5a9a6b}.dbar .free,.ileg .free::before{background:repeating-linear-gradient(45deg,#e9eef3,#e9eef3 6px,#d6dee7 6px,#d6dee7 12px);color:#334}
+.ileg{display:flex;gap:14px;font-size:.8em;color:var(--ink-soft)}.ileg span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.iopt{display:block;margin:6px 0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}.iform{display:grid;gap:10px;max-width:440px}.iform label{display:grid;gap:3px;font-size:.92em}
+.iform input:not([type=checkbox]){font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:5px}.ichk{display:flex!important;gap:8px;align-items:flex-start;grid-template-columns:none}.inst .err{color:#b3261e}.meter.big{height:14px}
 .ai-names input{font:inherit;width:9em;padding:5px 8px;border:1px solid var(--line);border-radius:5px}
 .ai-main{position:relative;flex:1;display:flex;min-height:0}
 .ai-time{align-self:center;font-size:.78em;color:var(--ink-soft);margin-top:-4px}
@@ -654,6 +663,29 @@ async function netRefresh(scan){if(!NATIVE)return;
   renderTrayNet();refreshSettings('rete',true);if(!$('#quick').hidden)openQuick();
   if(scan&&LIVE.net&&LIVE.net.wifiDevice&&LIVE.net.wifiOn&&!LIVE.scanning){LIVE.scanning=true;refreshSettings('rete',true);
     try{LIVE.nets=await SYS.call('net.scan')}catch(e){}LIVE.scanning=false;refreshSettings('rete',true)}}
+// ---- aggiornamenti dal web
+async function updBox(main,force){const box=$('#upd-box',main);if(!box)return;
+  const fmt=v=>esc(String(v||'').replace(/^0\.5-dev\./,'sviluppo '));
+  let st=null;try{st=(await SYS.call('update.status')).status}catch(e){}
+  if(st&&st.running){box.innerHTML=`<p><b>${esc(st.message||'Aggiorno…')}</b></p><div class="meter"><i style="width:${st.pct||3}%"></i></div><p class="note">Puoi continuare a lavorare. Alla fine ti dico di riavviare.</p>`;setTimeout(()=>{if(box.isConnected)updBox(main,false)},1200);return}
+  let r;try{r=await SYS.call('update.check',{force})}catch(e){r={ok:false,message:'Non riesco a controllare.'}}
+  const cur=r.current||{},done=st&&st.done&&st.restart&&st.version&&(!r.latest||st.version===r.latest.version)&&Date.now()/1000-(st.time||0)<86400;
+  let h=`<p>Versione installata: <b>${fmt(cur.version)}</b></p>`;
+  if(st&&st.phase==='error'&&Date.now()/1000-(st.time||0)<3600)h+=`<p class="err">${esc(st.message)}</p>`;
+  if(done)h+=`<p class="ok"><b>${esc(st.message)}</b></p><button class="btn primary" data-reboot>Riavvia adesso</button>`;
+  else if(!r.ok)h+=`<p class="note">${esc(r.message||'Non riesco a controllare: serve internet.')}</p><button class="btn" data-recheck>Controlla di nuovo</button>`;
+  else if(r.available){const L=r.latest;h+=`<p><b>È disponibile la versione ${fmt(L.version)}</b> (${Math.max(1,Math.round((L.size||0)/1048576))} MB)</p>
+    ${(L.notes||[]).length?`<details><summary>Cosa cambia</summary><ul>${L.notes.slice(0,10).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></details>`:''}
+    ${r.live?'<p class="note">Stai usando Rise dalla chiavetta: l’aggiornamento vale fino allo spegnimento. Sul computer installato resta per sempre.</p>':''}
+    <button class="btn primary" data-upd>Aggiorna</button>`}
+  else h+=`<p class="ok">✓ Rise è aggiornato.</p><button class="btn" data-recheck>Controlla di nuovo</button>`;
+  if(st&&st.phase==='done'&&!done&&/precedente/.test(st.message||''))h+=`<p class="note">${esc(st.message)}</p>`;
+  h+=` <button class="btn" data-rollback title="Se dopo un aggiornamento qualcosa non va">Torna alla versione precedente</button>`;
+  box.innerHTML=h;
+  const b=$('[data-upd]',box);if(b)b.onclick=async()=>{b.disabled=true;const x=await SYS.call('update.apply').catch(e=>({ok:false,message:e.message}));if(!x.ok){box.insertAdjacentHTML('beforeend',`<p class="err">${esc(x.message)}</p>`);return}setTimeout(()=>updBox(main,false),800)};
+  const c=$('[data-recheck]',box);if(c)c.onclick=()=>{box.innerHTML='<p class="note">Controllo…</p>';updBox(main,true)};
+  const rb=$('[data-reboot]',box);if(rb)rb.onclick=()=>SYS.call('power',{action:'reboot'}).catch(()=>{});
+  const ro=$('[data-rollback]',box);if(ro)ro.onclick=async()=>{if(ro.dataset.sure!=='1'){ro.dataset.sure='1';ro.textContent='Sicuro? Torna indietro';return}ro.disabled=true;const x=await SYS.call('update.rollback').catch(()=>({ok:false}));box.insertAdjacentHTML('beforeend',`<p class="${x.ok?'ok':'err'}">${x.ok?'Fatto: riavvia il computer.':'Non ci sono riuscito'+(x.message?': '+esc(x.message):'.')}</p>`)}}
 function apply(){
   $('#screen').style.filter=S.bright<100&&!(NATIVE&&LIVE.backlight)?`brightness(${S.bright/100})`:'';
   document.documentElement.style.setProperty('--ui',{s:'13px',m:'14.5px',l:'16.5px'}[S.text]);
@@ -670,6 +702,7 @@ const APPS={
  viewer:{name:'Visualizzatore',ic:'viewer',desc:'Apre foto, video, musica, PDF, Word, Excel e testo',w:800,h:560,render:renderViewer},
  notes:{name:'Note',ic:'notes',desc:'Scrivi appunti veloci, si salvano da soli',w:480,h:420,render:renderNotes},
  assistant:{name:'Assistente',ic:'assistant',desc:'Fai domande, scrivi lettere e preventivi, apri programmi. Senza internet',w:760,h:580,render:renderAssistant},
+ installer:{name:'Installa Rise',ic:'install',desc:'Installa Rise sul computer accanto a Windows, senza toccarlo',w:780,h:600,render:renderInstaller},
  store:{name:'Negozio',ic:'store',desc:'Installa programmi: Chrome, Spotify, Zoom, giochi e migliaia di altri',w:900,h:620,render:renderStore},
  calc:{name:'Calcolatrice',ic:'calc',fit:1,desc:'Somme, percentuali e conti al volo',w:300,h:440,render:renderCalc},
  settings:{name:'Impostazioni',ic:'settings',desc:'Schermo, rete, audio e tutto il resto, in un posto solo',w:840,h:580,render:renderSettings}
@@ -684,7 +717,8 @@ const SECTIONS=[
  {id:'aspetto',label:'Aspetto',ic:'look',lead:'Colori ed effetti delle finestre.'},
  {id:'condivisione',label:'Condivisione',ic:'network',lead:'Rise Drop per scambiare file con telefoni e PC vicini, e le cartelle che condividi in rete.'},
  {id:'assistente',label:'Assistente',ic:'assistant',lead:'Cosa può fare l’Assistente per te e il tuo account email per inviare preventivi e documenti.'},
- {id:'sistema',label:'Sistema e hardware',ic:'system',lead:'Cosa sta usando il computer e se ogni componente funziona, in parole semplici.'}
+ {id:'sistema',label:'Sistema e hardware',ic:'system',lead:'Cosa sta usando il computer e se ogni componente funziona, in parole semplici.'},
+ {id:'aggiornamenti',label:'Aggiornamenti',ic:'system',lead:'Le novità di Rise arrivano da internet: niente chiavetta e niente reinstallazione. I tuoi file e le tue impostazioni restano come sono.'}
 ];
 const SETS=[
  {id:'bright',sec:'schermo',label:'Luminosità',desc:'Quanto è chiaro lo schermo',k:'luminosita luce chiaro scuro schermo'},
@@ -697,6 +731,7 @@ const SETS=[
  {id:'vol',sec:'suono',label:'Volume',desc:'Quanto è alto l\'audio',k:'volume audio suono alto basso muto'},
  {id:'out',sec:'suono',label:'Uscita audio',desc:'Altoparlanti o cuffie',k:'cuffie altoparlanti casse bluetooth uscita'},
  {id:'accent',sec:'aspetto',label:'Colore principale',desc:'Il colore di pulsanti e selezioni',k:'colore tema accento personalizza'},
+ {id:'upd',sec:'aggiornamenti',label:'Aggiornamenti di Rise',desc:'Controlla e installa la versione nuova',k:'aggiorna aggiornamento versione novità nuova update'},
  {id:'perm',sec:'assistente',label:'Permessi dell’Assistente',desc:'Siti, file e cartelle, email',k:'assistente permessi autorizzazioni email posta gmail rubrica contatti'},
  {id:'mail',sec:'assistente',label:'Account email',desc:'Per inviare preventivi e documenti',k:'email posta gmail outlook thunderbird account password invio'},
  {id:'wall',sec:'aspetto',label:'Sfondo',desc:'L’immagine del desktop',k:'sfondo desktop foto immagine wallpaper'},
@@ -776,7 +811,10 @@ function renderTasks(){
 $('#peek').onclick=()=>{if(MW){const act=TOPS.some(x=>!x.minimized);TOPS.forEach(x=>SYS.call('top.action',{action:act?'minimize':'activate',id:x.id}));return}const vis=Object.keys(W).filter(k=>!W[k].min);if(vis.length)vis.forEach(k=>{W[k].el.hidden=true;W[k].min=true});TOP=null;renderTasks()};
 
 /* ================= Desktop ================= */
-setTimeout(()=>{renderDesk();loadDeskFiles()},0);setTimeout(()=>{initFigure();if(NATIVE&&(ROLE==='desktop'||ROLE==='full'))SYS.call('voice.wake',{enabled:S.wake!==false,names:S.aiNames||{}}).catch(()=>{})},0);setInterval(()=>{if(ROLE!=='app'&&document.visibilityState==='visible')loadDeskFiles()},8000);
+setTimeout(()=>{renderDesk();loadDeskFiles()},0);setTimeout(()=>{if(NATIVE&&(ROLE==='desktop'||ROLE==='full')){const chk=async()=>{if(S.updAuto===false)return;let last=0;try{last=+localStorage.getItem('rise.updCheck')||0}catch(e){}
+  if(Date.now()-last<20*3600*1000)return;try{localStorage.setItem('rise.updCheck',String(Date.now()))}catch(e){}
+  const r=await SYS.call('update.check',{force:true}).catch(()=>null);if(r&&r.available&&window.__riseToast)window.__riseToast('C’è una versione nuova di Rise: Impostazioni → Aggiornamenti.')};
+  setTimeout(chk,60000);setInterval(chk,3600*1000)}},0);setTimeout(()=>{if(NATIVE&&ROLE!=='app')SYS.call('sys.live').then(r=>{IS_LIVE=!!(r&&r.live);if(IS_LIVE)renderDesk()}).catch(()=>{})},0);setTimeout(()=>{initFigure();if(NATIVE&&(ROLE==='desktop'||ROLE==='full'))SYS.call('voice.wake',{enabled:S.wake!==false,names:S.aiNames||{}}).catch(()=>{})},0);setInterval(()=>{if(ROLE!=='app'&&document.visibilityState==='visible')loadDeskFiles()},8000);
 $('#screen').addEventListener('contextmenu',e=>{if(e.target.closest('.win'))return;e.preventDefault();deskMenu(e.clientX,e.clientY)});
 
 /* ================= Menu Start ================= */
@@ -1170,6 +1208,70 @@ function renderViewer(b,opts){
   return load;
 }
 
+/* ================= Installa Rise (accanto a Windows) ================= */
+ICO.install='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fb4ff"/><stop offset="1" stop-color="#1f5fd1"/></linearGradient></defs><rect x="8" y="34" width="48" height="20" rx="4" fill="#5b6b7d"/><rect x="8" y="34" width="48" height="8" rx="4" fill="#7d8ea1"/><circle cx="48" cy="46" r="2.5" fill="#7dff9a"/><path d="M32 6v24" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/><path d="M21 21l11 11 11-11" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+let IS_LIVE=false;
+function renderInstaller(b){
+  b.innerHTML='<div class="inst"><div class="inst-body"><p class="note">Leggo i dischi del computer…</p></div></div>';
+  const body=$('.inst-body',b);let SC=null,PICK=null,poll=null;
+  if(!NATIVE){body.innerHTML='<p class="note">L’installazione si fa dal PC avviato con la chiavetta di Rise.</p>';return}
+  const GB=x=>(x/1073741824).toFixed(x>=1e11?0:1).replace('.',',')+' GB';
+  const bar=d=>{const tot=d.size,segs=[...d.partitions.map(p=>({s:p.start,e:p.end,t:/EFI/.test(p.kind)?'efi':/ntfs|BitLocker/.test(p.fstype)||/Microsoft basic/.test(p.kind)?'win':/Microsoft reserved|recovery/i.test(p.kind)?'sys':'oth',l:p.label||p.kind||p.fstype,sz:(p.end-p.start+1)*d.sector})),
+      ...d.free.map(f=>({s:f.start,e:f.end,t:'free',l:'Spazio libero',sz:f.bytes}))].sort((a,b)=>a.s-b.s);
+    return `<div class="dbar">${segs.map(x=>`<i class="${x.t}" style="flex:${Math.max(0.6,x.sz/tot*100)}" title="${esc(x.l)} · ${GB(x.sz)}"><span>${x.sz/tot>0.09?esc(x.t==='win'?'Windows':x.t==='free'?'Libero':x.t==='efi'?'Avvio':''):''}</span></i>`).join('')}</div>`};
+  const step1=()=>{body.innerHTML=`<div class="ihero">${I('install',56)}<div><h2>Installa Rise sul computer</h2><p class="lead">Rise si installa <b>accanto a Windows</b>: all’accensione scegli quale usare. Così è molto più veloce che dalla chiavetta e si aggiorna da solo.</p></div></div>
+    <ul class="ilist"><li>✓ <b>Windows non viene toccato</b>: niente viene cancellato o ridimensionato. Rise usa solo lo spazio libero del disco.</li>
+    <li>✓ I tuoi file di Windows restano dove sono.</li><li>✓ Servono almeno ${SC.minGb} GB di spazio libero (consigliati 60 GB o più).</li></ul>
+    ${SC.disks.some(d=>d.bitlocker)?`<div class="iwarn"><b>Windows è cifrato con BitLocker: prima salva la chiave di ripristino</b><p>Dopo l’installazione Windows potrebbe chiederti una volta la <b>chiave di ripristino</b> (48 cifre). Prendila adesso, da Windows:</p><ol>
+      <li>Avvia Windows, cerca <b>cmd</b> → tasto destro → <b>Esegui come amministratore</b>.</li><li>Scrivi <b>manage-bde -protectors -get C:</b> e premi Invio.</li>
+      <li>Sotto “Password numerica” c’è la chiave: <b>fotografala o scrivila su un foglio</b>.</li></ol><p>Se usi un account Microsoft la trovi anche su <b>aka.ms/myrecoverykey</b>.</p></div>`
+      :SC.disks.some(d=>d.windows)?`<div class="iok">✓ <b>Windows non è cifrato con BitLocker</b>: non serve nessuna chiave di ripristino.</div>`:''}
+    <div class="iact"><button class="btn primary" data-next>Avanti</button></div>`;$('[data-next]',body).onclick=step2};
+  const step2=()=>{const ds=SC.disks.filter(d=>d.partitions.length||d.free.length);
+    const opts=ds.flatMap(d=>d.free.filter(f=>f.bytes>=SC.minGb*1073741824).map(f=>({d,f})));
+    body.innerHTML=`<h2>Dove installare</h2>${ds.map(d=>`<div class="idisk"><b>${esc(d.model||'Disco')}</b> <small>${esc(d.path)} · ${GB(d.size)}${d.windows?' · c’è Windows':''}</small>${bar(d)}
+       <div class="ileg"><span class="win">Windows</span><span class="efi">Avvio</span><span class="sys">Sistema</span><span class="free">Spazio libero</span></div></div>`).join('')||'<p class="note">Non trovo dischi interni.</p>'}
+      ${opts.length?`<p>Scegli lo spazio libero dove mettere Rise:</p>${opts.map((o,i)=>`<label class="iopt"><input type="radio" name="sp" value="${i}"${i===0?' checked':''}> <b>${GB(o.f.bytes)} liberi</b> su ${esc(o.d.model||o.d.path)}</label>`).join('')}
+        <div class="iact"><button class="btn" data-back>Indietro</button><button class="btn primary" data-next>Avanti</button></div>`
+      :`<div class="iwarn"><b>Non c’è abbastanza spazio libero (servono almeno ${SC.minGb} GB).</b><p>Liberalo da Windows, in modo sicuro, così:</p><ol>
+        <li>Riavvia il computer e entra in <b>Windows</b>.</li><li>Tasto destro sul pulsante Start → <b>Gestione disco</b>.</li>
+        <li>Tasto destro sulla partizione <b>C:</b> → <b>Riduci volume…</b></li><li>In “Quantità di spazio da ridurre” scrivi <b>61440</b> (= 60 GB) → <b>Riduci</b>.</li>
+        <li>Comparirà un riquadro nero “Non allocato”: <b>lascialo così</b>, non creare niente lì.</li><li>Riavvia con la chiavetta di Rise e riapri “Installa Rise”.</li></ol></div>
+        <div class="iact"><button class="btn" data-back>Indietro</button><button class="btn" data-rescan>Controlla di nuovo</button></div>`}`;
+    $('[data-back]',body).onclick=step1;const rs=$('[data-rescan]',body);if(rs)rs.onclick=async()=>{body.innerHTML='<p class="note">Leggo i dischi…</p>';SC=await SYS.call('install.scan');step2()};
+    const nx=$('[data-next]',body);if(nx)nx.onclick=()=>{const i=+($('input[name=sp]:checked',body)||{value:0}).value;PICK=opts[i];step3()}};
+  const step3=()=>{body.innerHTML=`<h2>Il tuo utente</h2>
+    <div class="iform"><label>Il tuo nome<input data-f="fullname" placeholder="Es. Santino Fantocchi" autocomplete="off"></label>
+    <label>Nome utente (senza spazi)<input data-f="user" placeholder="es. santino" autocomplete="off"></label>
+    <label>Password<input type="password" data-f="pw1"></label><label>Ripeti la password<input type="password" data-f="pw2"></label>
+    <label class="ichk"><input type="checkbox" data-f="auto" checked> Entra da solo all’accensione (senza chiedere la password)</label>
+    ${SC.models&&SC.models.length?`<label class="ichk"><input type="checkbox" data-f="models" checked> Copia anche il “cervello” e la voce dell’Assistente già scaricati (${GB(SC.modelsBytes)}): non dovrai riscaricarli</label>`:''}</div>
+    <p class="err" data-err></p><div class="iact"><button class="btn" data-back>Indietro</button><button class="btn primary" data-next>Avanti</button></div>`;
+    const f=k=>$(`[data-f=${k}]`,body);f('fullname').oninput=()=>{if(!f('user').dataset.touched)f('user').value=(f('fullname').value.split(' ')[0]||'').toLowerCase().normalize('NFD').replace(/[^a-z0-9-]/g,'').slice(0,30)};
+    f('user').oninput=()=>{f('user').dataset.touched=1};$('[data-back]',body).onclick=step2;
+    $('[data-next]',body).onclick=()=>{const u=f('user').value.trim(),e=$('[data-err]',body);
+      if(!/^[a-z][a-z0-9-]{0,30}$/.test(u)||['root','rise','admin'].includes(u)){e.textContent='Nome utente: solo lettere minuscole e numeri, iniziando con una lettera.';return}
+      if(f('pw1').value.length<4){e.textContent='La password deve avere almeno 4 caratteri.';return}if(f('pw1').value!==f('pw2').value){e.textContent='Le due password non sono uguali.';return}
+      step4({fullname:f('fullname').value.trim()||u,user:u,password:f('pw1').value,autologin:f('auto').checked,copy_models:f('models')&&f('models').checked?SC.models:[]})}};
+  const step4=o=>{body.innerHTML=`<h2>Riepilogo</h2><ul class="ilist"><li>Rise va nei <b>${GB(PICK.f.bytes)} di spazio libero</b> di ${esc(PICK.d.model||PICK.d.path)}.</li>
+      <li>${PICK.d.windows?'<b>Windows resta com’è</b>: all’accensione comparirà un menu per scegliere Rise o Windows.':'All’accensione partirà Rise.'}</li><li>Utente: <b>${esc(o.user)}</b>${o.autologin?' (entra da solo)':''}</li>
+      ${o.copy_models.length?'<li>Copio anche il cervello e la voce dell’Assistente.</li>':''}</ul>
+      ${PICK.d.bitlocker?`<label class="ichk"><input type="checkbox" data-ok> Ho salvato la chiave di ripristino BitLocker</label>`:''}
+      <p class="note">Ci vogliono 5–15 minuti. Non spegnere il computer e non togliere la chiavetta finché non è finito.</p>
+      <div class="iact"><button class="btn" data-back>Indietro</button><button class="btn primary" data-go${PICK.d.bitlocker?' disabled':''}>Installa adesso</button></div>`;
+    const ok=$('[data-ok]',body),go=$('[data-go]',body);if(ok)ok.onchange=()=>{go.disabled=!ok.checked};$('[data-back]',body).onclick=step3;
+    go.onclick=async()=>{go.disabled=true;const r=await SYS.call('install.start',Object.assign({disk:PICK.d.path,start:PICK.f.start,end:PICK.f.end},o)).catch(e=>({ok:false,message:e.message}));
+      if(!r.ok){body.insertAdjacentHTML('beforeend',`<p class="err">${esc(r.message||'Non riesco a cominciare.')}</p>`);return}progress()}};
+  const progress=()=>{body.innerHTML=`<h2>Installo Rise…</h2><div class="meter big"><i style="width:2%"></i></div><p class="ip-msg">Comincio…</p><p class="note">Puoi lasciare il computer da solo: ti avviso io quando ho finito.</p>`;
+    clearInterval(poll);poll=setInterval(async()=>{if(!b.isConnected){clearInterval(poll);return}const r=await SYS.call('install.status').catch(()=>null);const st=r&&r.status||{};
+      $('.meter i',body).style.width=(st.pct||2)+'%';$('.ip-msg',body).textContent=st.message||'…';
+      if(st.done){clearInterval(poll);if(st.phase==='error'){body.innerHTML=`<h2>Non è andata</h2><p class="err">${esc(st.message)}</p><p>Windows e i tuoi file non sono stati toccati.</p><div class="iact"><button class="btn" data-again>Riprova</button></div>`;$('[data-again]',body).onclick=async()=>{SC=await SYS.call('install.scan');step2()}}
+        else body.innerHTML=`<div class="ihero">${I('install',56)}<div><h2>Fatto! 🎉</h2><p class="lead">${esc(st.message)}</p></div></div><div class="iact"><button class="btn primary" data-off>Spegni il computer</button></div>`,$('[data-off]',body)&&($('[data-off]',body).onclick=()=>SYS.call('power',{action:'poweroff'}))}},1000)};
+  (async()=>{try{SC=await SYS.call('install.scan')}catch(e){SC={ok:false,message:e.message}}
+    if(!SC.ok){body.innerHTML=`<p class="note">${esc(SC.message||'Non riesco a leggere i dischi.')}</p>`;return}
+    const st=(await SYS.call('install.status').catch(()=>({}))).status||{};if(st.phase&&!st.done)return progress();step1()})();
+}
+
 /* ================= Negozio (app da Flathub) ================= */
 ICO.store='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4aa3ff"/><stop offset="1" stop-color="#1f5fd1"/></linearGradient></defs><path d="M14 22h36l-3 32a4 4 0 0 1-4 4H21a4 4 0 0 1-4-4z" fill="url(#g)"/><path d="M24 26v-6a8 8 0 0 1 16 0v6" fill="none" stroke="#1a3f8a" stroke-width="4" stroke-linecap="round"/><path d="M26 40l5 5 9-10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>');
 function renderStore(b){
@@ -1225,7 +1327,7 @@ function renderDesk(){const el=$('#icons');if(!el||ROLE==='app'||ROLE==='panel'|
   const pins=(S.pins||[]).map(id=>{if(APPS[id])return {ic:I(APPS[id].ic,48),l:APPS[id].name,f:()=>openApp(id)};const n=NAPPS.find(x=>x.id===id);
       if(n)return {ic:n.img?`<img class="icon" src="${esc(n.img.startsWith('/')?'file://'+n.img:n.img)}" width="48" height="48" alt="">`:I(NICON[n.id]||'computer',48),l:n.name,f:()=>SYS.call('native.open',{id})};return null}).filter(Boolean);
   const files=DESKFILES.map(f=>({ic:f.dir?I('folder',48):fileIcon(f.name,48),l:f.name,f:()=>f.dir?openApp('files',{goto:'fs:'+HOMEP+'/Scrivania/'+f.name}):deskOpen(HOMEP+'/Scrivania/'+f.name,f)}));
-  const all=[...DESK.map(([ic,l,f])=>({ic:I(ic,48),l,f})),...pins,...files];
+  const all=[...(IS_LIVE?[{ic:I('install',48),l:'Installa Rise',f:()=>openApp('installer')}]:[]),...DESK.map(([ic,l,f])=>({ic:I(ic,48),l,f})),...pins,...files];
   el.innerHTML=all.map((x,i)=>`<button class="dicon" data-i="${i}">${x.ic}<span>${esc(x.l)}</span></button>`).join('');
   $$('.dicon',el).forEach(b=>b.addEventListener('click',()=>all[b.dataset.i].f()))}
 let HOMEP='/home/rise';
@@ -1347,6 +1449,8 @@ function renderSettings(b,opts){
       h+=`</div><div class="st-label" style="padding:18px 2px 0" data-id="shares">Cartelle condivise in rete</div><div class="hw" id="sh-list"><p class="note">${NATIVE?'Carico…':'Disponibile sul PC.'}</p></div><p class="note">Per condividere una cartella aprila in Esplora file e premi “Condividi”.</p><div>`;
     }
     if(sec==='sistema')h+=row('kbd','Tastiera','La disposizione dei tasti del tuo computer. Se premendo un tasto esce un simbolo diverso da quello disegnato, cambiala qui.',`<select id="s-kbd" aria-label="Tastiera">${Object.entries(KBD_NAMES).map(([k,v])=>`<option value="${k}"${(S.kbd||'it')===k?' selected':''}>${v}</option>`).join('')}</select>`);
+    if(sec==='aggiornamenti')h+=`</div><div class="mbox" id="upd-box" data-id="upd"><p class="note">${NATIVE?'Controllo se c’è una versione nuova…':'Disponibile sul PC.'}</p></div>
+      <div class="row" data-id="upd-auto"><div class="txt"><b>Controlla da solo</b><small>Una volta al giorno Rise guarda se c’è una versione nuova e te lo dice. Non installa niente senza il tuo “Aggiorna”.</small></div><div class="ctl"><button class="switch" role="switch" aria-checked="${S.updAuto!==false}" aria-label="Controlla da solo" data-updauto></button></div></div><div>`;
     if(sec==='sistema'&&NATIVE){h+=`</div><div id="sysinfo"><p class="lead">Leggo le informazioni del computer…</p></div><div>`}
     else if(sec==='sistema'){
       h+=`</div><dl class="kv" data-id="info">
@@ -1367,6 +1471,9 @@ function renderSettings(b,opts){
     main.innerHTML=h+'</div>';main.scrollTop=y;bind();
     if(sec==='sistema'&&NATIVE)fillSys();
     if(sec==='condivisione'&&NATIVE)fillShare();
+    if(sec==='aggiornamenti'){
+      $$('[data-updauto]',main).forEach(x=>x.onclick=()=>{S.updAuto=S.updAuto===false;apply();x.setAttribute('aria-checked',String(S.updAuto!==false))});
+      if(NATIVE)updBox(main,false)}
     if(sec==='assistente'){
       const wakeSync=()=>{if(!NATIVE)return;SYS.call('voice.wake',{enabled:S.wake!==false,names:S.aiNames||{}}).then(r=>{const e=$('.ai-wake-st',main);if(!e||!r)return;e.textContent=!r.available?'Non disponibile: '+(r.why||'?'):S.wake===false?'Spenta':!r.started?'Non partita (riavvia il computer)':r.running?'In ascolto ✓'+(r.log?' · '+r.log:''):'Si sta avviando…'+(r.log?' · '+r.log:'');if(r.available&&S.wake!==false&&!r.running)setTimeout(wakeSync,2500)}).catch(()=>{})};
       wakeSync();
@@ -1652,7 +1759,7 @@ function renderAssistant(b,opts){
     const DOTS0='<span class="ai-dots"><i></i><i></i><i></i></span>';
     vsel.onchange=async()=>{VOICE=vsel.value;try{localStorage.setItem('rise.ai.voice',VOICE)}catch(e){}SYS.call('voice.stop').catch(()=>{});faceInit();
       if(VOICE){const st=await voiceReady(VOICE);if(st)SYS.call('voice.say',{voice:VOICE,text:'Ciao! Da adesso ti rispondo anche a voce.'}).catch(()=>{})}};
-    async function speak(t){if(!VOICE||!t)return;try{let r=await SYS.call('voice.say',{voice:VOICE,text:t});
+    async function speak(t){if(t)LASTSAID=t;if(!VOICE||!t)return;try{let r=await SYS.call('voice.say',{voice:VOICE,text:t});
       if(r&&r.need==='download'&&await voiceReady(VOICE))r=await SYS.call('voice.say',{voice:VOICE,text:t});if(r&&!r.ok&&r.message)toast(r.message,true)}catch(e){toast('La voce non risponde.',true)}}
     let REC=false,recT=null;
     async function micDown(){if(busy)return;
@@ -1665,7 +1772,7 @@ function renderAssistant(b,opts){
       REC=true;faceState('listen');mic.classList.add('rec');toast('Ti ascolto… parla pure: quando smetti mi fermo da solo (o clicca di nuovo il microfono).');recT=setTimeout(()=>{if(REC)micDown()},45000);
       const watch=setInterval(async()=>{if(!REC||!b.isConnected){clearInterval(watch);return}let st;try{st=await SYS.call('voice.status')}catch(e){return}
         if(st)mic.style.boxShadow=`0 0 0 ${2+Math.round((st.level||0)*14)}px rgba(216,58,58,.35)`;if(REC&&st&&!st.recording){clearInterval(watch);mic.style.boxShadow='';micDown()}},300)}
-    mic.onclick=micDown;let FROMMIC=false,STT_SEC=null;
+    mic.onclick=micDown;let FROMMIC=false,STT_SEC=null,LASTSAID='';
     // "Ehi Sara": risponde chi hai chiamato, e ascolta subito la domanda
     wakeFn=()=>{const g=WAKE;WAKE=null;if(!g||!b.isConnected)return;const v=g.wake==='m'?'m':'f';
       if(VOICE!==v){VOICE=v;vsel.value=v;try{localStorage.setItem('rise.ai.voice',v)}catch(e){}faceInit()}
@@ -1826,6 +1933,31 @@ function renderAssistant(b,opts){
       // Wi-Fi e Bluetooth
       if((m=t.match(/^(accendi|attiva|spegni|disattiva)\s+(?:il\s+)?(wi-?fi|wireless|bluetooth)$/))){await netAct(/blue/.test(m[2])?'bluetooth':'wifi',/accendi|attiva/.test(m[1])?'accendi':'spegni','');return true}
       if((m=q.trim().replace(/[?!.]+$/,'').match(/^(?:collegati|connettiti|collega(?:mi)?)\s+(?:al|alla)\s+(?:wi-?fi|rete)\s+(?:di\s+|chiamat[ao]\s+)?(.+)$/i))){await netAct('wifi','collega',m[1]);return true}
+      // ===== comandi alla Siri (prima parte: prima della regola "installa app") =====
+      const u=t.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[,;'’]/g,' ').replace(/\s+/g,' ').trim();
+      // zitta / ripeti
+      if(/^(stop|basta|zitta|zitto|silenzio|smetti( di parlare)?|fermati|stai zitt[ao])$/.test(u)){SYS.call('voice.stop').catch(()=>{});add('bot','<small>(in silenzio)</small>');return true}
+      if(/^(ripeti|puoi ripetere|ripetilo|come hai detto|cosa hai detto)/.test(u)){if(LASTSAID){add('bot',esc(LASTSAID));speak(LASTSAID)}else reply('Non ho ancora detto niente.','Non ho ancora detto niente.');return true}
+      // due parole di cortesia: risposta subito
+      if(/^(grazie|ti ringrazio|grazie mille|perfetto grazie|ok grazie)( mille| tante)?$/.test(u)){const s=['Prego!','Figurati!','Di niente, sono qui.'][Math.floor(Math.random()*3)];reply(esc(s),s);return true}
+      {const nm=[aiName('f'),aiName('m')].map(x=>x.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')).join('|');
+       if(new RegExp('^(ciao|buongiorno|buonasera|buon pomeriggio|salve|ehi|hey|ei)( ('+nm+'|rise|assistente))?$').test(u)){
+        const h=new Date().getHours(),s=(h<13?'Buongiorno':h<18?'Buon pomeriggio':'Buonasera')+'! Come posso aiutarti?';reply(esc(s),s);return true}}
+      if(/^(come ti chiami|chi sei|tu chi sei|come si chiama l'assistente)/.test(u)){const n=aiName(VOICE==='m'?'m':'f'),s=`Sono ${n}, l’assistente di Rise. Lavoro sul tuo computer: posso aprire programmi e siti, scrivere documenti e preventivi, leggere le email, dirti il meteo, i mercati e molto altro.`;reply(esc(s),s);return true}
+      if(/^(come stai|come va)( oggi)?$/.test(u)){const s='Benissimo, grazie! E tu? Dimmi pure cosa ti serve.';reply(esc(s),s);return true}
+      if(/^(cosa sai fare|cosa puoi fare|che cosa sai fare|aiuto|help)$/.test(u)){const s='Posso aprire programmi e siti, cercare su YouTube e Google, creare cartelle, documenti, PDF e preventivi, mandare email, leggere la posta, dirti meteo, notizie, mercati, cambi, chi è una persona, fare calcoli e conversioni, mettere musica, sveglie, timer e promemoria, prendere note, portarti in un posto con il navigatore, e regolare volume, luminosità, Wi‑Fi e Bluetooth.';reply(esc(s),s);return true}
+      // sveglia: "sveglia alle 7", "metti la sveglia domani alle 6 e mezza"
+      if((m=u.match(/^(?:metti(?:mi)?|imposta|punta|crea)?\s*(?:una |la )?sveglia\s+(.+)$/))&&/\d|mezzogiorno|domani/.test(m[1])){const r=await SYS.call('remind.add',{testo:'Sveglia! ⏰',quando:m[1]}).catch(e=>({ok:false,message:e.message}));
+        if(!r.ok){reply(esc(r.message||'A che ora?'),r.message||'A che ora?');return true}add('tool',`${I('assistant',20)} Sveglia: <b>${esc(r.label)}</b>`);const s='Sveglia puntata per '+r.label+'.';reply(esc(s),s);return true}
+      // radio
+      const RADIO={'radio deejay':'https://www.deejay.it/radio/','deejay':'https://www.deejay.it/radio/','rtl':'https://www.rtl.it/','rtl 102.5':'https://www.rtl.it/','rtl 1025':'https://www.rtl.it/','radio italia':'https://www.radioitalia.it/','rds':'https://www.rds.it/','radio 105':'https://www.105.net/','105':'https://www.105.net/','virgin radio':'https://www.virginradio.it/','radio capital':'https://www.capital.it/','capital':'https://www.capital.it/','radio kiss kiss':'https://www.kisskiss.it/','kiss kiss':'https://www.kisskiss.it/','radio 24':'https://www.radio24.ilsole24ore.com/','radio1':'https://www.raiplaysound.it/radio1','radio 1':'https://www.raiplaysound.it/radio1','radio2':'https://www.raiplaysound.it/radio2','radio 2':'https://www.raiplaysound.it/radio2','radio3':'https://www.raiplaysound.it/radio3','radio 3':'https://www.raiplaysound.it/radio3','m2o':'https://www.m2o.it/','radio montecarlo':'https://www.radiomontecarlo.net/'};
+      if((m=u.match(/^(?:metti(?:mi)?|accendi|ascolta(?:re)?|fammi (?:ascoltare|sentire)|apri|sintonizza(?:ti)? su)\s+(?:la\s+)?(radio\s+.+|rtl.*|rds|m2o|deejay|105|capital|virgin radio|kiss kiss)$/))){
+        const k=m[1].replace(/^radio rai /,'radio ').trim(),url=RADIO[k]||RADIO['radio '+k.replace(/^radio /,'')]||RADIO[k.replace(/^radio /,'')];
+        if(url){await openUrl(url);reply(`${I('sound',18)} Apro <b>${esc(m[1])}</b>: premi “play” sulla pagina se non parte da sola.`,'Ecco '+m[1]+'.');return true}}
+      // musica: "metti della musica di vasco", "fammi ascoltare albachiara", "suona i queen", "metti una canzone rilassante"
+      if((m=u.match(/^(?:metti(?:mi)?|suona(?:mi)?|fammi (?:ascoltare|sentire)|riproduci|fai partire|voglio (?:ascoltare|sentire))\s+(?:un po' di |un po di |della |delle |dei |degli |la |le |il |i |lo |gli |un |una )?(?:musica|canzon[ei]|brani|brano|album|pezzi|pezzo|playlist)?\s*(?:di |dei |degli |della |del |dello )?(.*)$/))&&!/^(sveglia|volume|promemoria|timer)/.test(m[1])&&/(musica|canzon|brano|brani|album|pezz|playlist|ascolt|sentire|suona|riproduci)/.test(u)){
+        const what=m[1].trim()||'musica italiana';await openUrl('https://music.youtube.com/search?q='+encodeURIComponent(what));
+        reply(`${I('sound',18)} Metto <b>${esc(what)}</b> su YouTube Music.`,'Ecco '+what+'.');return true}
       // app: "installami spotify", "scarica chrome", "metti whatsapp"
       if(P.siti&&(m=t.match(/^(?:installa(?:mi)?|scarica(?:mi)?|metti(?:mi)?|voglio)\s+(?:l'app\s+|l’app\s+|il programma\s+|anche\s+)?(.+?)(?:\s+(?:sul computer|sul pc|dal negozio))?$/))&&!/(video|canzon|musica|film)\b/.test(m[1])){await askInstall(m[1]);return true}
       // promemoria e timer: "ricordami alle 17 di chiamare rossi", "crea un promemoria domani alle 9 per…", "timer di 10 minuti"
@@ -1882,9 +2014,10 @@ function renderAssistant(b,opts){
       if(/(^|\s)(meteo|tempo fa|tempo farà|tempo fara|previsioni|temperatura|piove|pioverà|piovera)(?=\s|$)/.test(t)){
         const day=(t.match(/(?:^|\s)(oggi|domani|dopodomani|lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica|lunedi|martedi|mercoledi|giovedi|venerdi)(?=\s|$)/)||[])[1]||'';
         let city=(t.match(/(?:^|\s)(?:a|ad|di|per|su|in)\s+([a-zàèéìòù' ]+?)(?:\s+(?:oggi|domani|dopodomani|lunedì|martedì|mercoledì|giovedì|venerdì|sabato|domenica|questa settimana|nei prossimi giorni))?$/)||[])[1]||'';
-        city=city.replace(/^(l'|la |il |lo )/,'').trim();
+        city=city.replace(/^(l'|la |il |lo )/,'').trim()||(S.city||'');
         if(city&&!/^(oggi|domani|dopodomani)$/.test(city)){const note=add('tool',`${I('browser',20)} Previsioni del tempo: <b>${esc(city)}</b>`);
           const r=await SYS.call('web.weather',{citta:city}).catch(()=>({ok:false}));if(!r.ok||!r.days){note.remove();return false}
+          if(r.name&&S.city!==r.name){S.city=r.name;apply()}
           const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'');let d=r.days[0],when='oggi';
           if(day==='domani')d=r.days.find(x=>x.label==='domani')||r.days[1],when='domani';else if(day==='dopodomani')d=r.days[2],when='dopodomani';
           else if(day&&day!=='oggi'){const f=r.days.slice(1).find(x=>norm(x.weekday)===norm(day));if(f){d=f;when=f.weekday}}
@@ -1899,8 +2032,98 @@ function renderAssistant(b,opts){
       if((m=t.match(/(?:volume|audio)\s+(?:al|a)\s+(\d{1,3})/))){const v=Math.min(100,+m[1]);await SYS.call('audio.set',{volume:v});reply(`Volume al <b>${v}%</b>.`,'Volume al '+v+' per cento.');return true}
       if(/^(togli|silenzia|muto)/.test(t)&&/audio|volume|muto|suono/.test(t)){await SYS.call('audio.set',{volume:0});reply('Audio spento.','');return true}
       // ora e data
-      if(/^(che ore sono|che ora è|che ora e|dimmi l'ora)/.test(t)){const s='Sono le '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';reply(esc(s),s);return true}
-      if(/^(che giorno è|che giorno e|che giorno è oggi|che data è|quanti ne abbiamo)/.test(t)){const s='Oggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';reply(esc(s),s);return true}
+      if(/^(che ore sono|che ora è|che ora e|dimmi l'ora|mi dici l'ora)( adesso| ora)?$/.test(t)){const s='Sono le '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';reply(esc(s),s);return true}
+      if(/^(che giorno è|che giorno e|che data è|che data e|quanti ne abbiamo)( oggi)?$/.test(t)){const s='Oggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';reply(esc(s),s);return true}
+      // ===== comandi alla Siri (seconda parte) =====
+      {const u=t.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[,;'’]/g,' ').replace(/\s+/g,' ').trim();const N=x=>parseFloat(String(x).replace(/\./g,'').replace(',','.'));
+      const fmt=(x,d=2)=>Number(x).toLocaleString('it-IT',{maximumFractionDigits:d});
+      // ore nel mondo
+      const TZ={'new york':'America/New_York','los angeles':'America/Los_Angeles','san francisco':'America/Los_Angeles','chicago':'America/Chicago','miami':'America/New_York','londra':'Europe/London','parigi':'Europe/Paris','madrid':'Europe/Madrid','berlino':'Europe/Berlin','mosca':'Europe/Moscow','dubai':'Asia/Dubai','tokyo':'Asia/Tokyo','pechino':'Asia/Shanghai','shanghai':'Asia/Shanghai','hong kong':'Asia/Hong_Kong','singapore':'Asia/Singapore','sydney':'Australia/Sydney','mumbai':'Asia/Kolkata','nuova delhi':'Asia/Kolkata','san paolo':'America/Sao_Paulo','buenos aires':'America/Argentina/Buenos_Aires','citta del messico':'America/Mexico_City','toronto':'America/Toronto','istanbul':'Europe/Istanbul','il cairo':'Africa/Cairo','bangkok':'Asia/Bangkok','zurigo':'Europe/Zurich','lugano':'Europe/Zurich','atene':'Europe/Athens','lisbona':'Europe/Lisbon','seul':'Asia/Seoul','tel aviv':'Asia/Jerusalem','riad':'Asia/Riyadh','manila':'Asia/Manila'};
+      if((m=u.match(/^(?:che ore sono|che ora e|che ora fa|che ora sono)\s+(?:a|ad|in|nel|negli)\s+(.+)$/))){const k=m[1].replace(/^(l |la |il )/,'');const z=TZ[k];
+        if(z){const s=`A ${k.replace(/\b\w/g,c=>c.toUpperCase())} sono le ${new Date().toLocaleTimeString('it-IT',{timeZone:z,hour:'2-digit',minute:'2-digit'})}.`;reply(esc(s),s);return true}}
+      // date: "quanti giorni mancano a natale", "che giorno sarà il 3 marzo", "che giorno è domani"
+      const MESI=['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
+      const easter=y=>{const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,mm=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*mm+114)/31),da=((h+l-7*mm+114)%31)+1;return new Date(y,mo-1,da)};
+      const dayOf=(txt)=>{const today=new Date();today.setHours(0,0,0,0);const y0=today.getFullYear();let d=null;
+        const F={'natale':[11,25],'capodanno':[0,1],'ferragosto':[7,15],'san valentino':[1,14],'la befana':[0,6],'befana':[0,6],'halloween':[9,31],'la festa della repubblica':[5,2],'festa della repubblica':[5,2],'il 25 aprile':[3,25],'la festa della liberazione':[3,25],'il primo maggio':[4,1],'l epifania':[0,6],'epifania':[0,6],'la vigilia':[11,24],'la vigilia di natale':[11,24]};
+        const k=txt.replace(/^(a|al|alla|allo|ai|per|fino a)\s+/,'').trim();
+        if(F[k]){d=new Date(y0,F[k][0],F[k][1]);if(d<today)d=new Date(y0+1,F[k][0],F[k][1])}
+        else if(/pasqua/.test(k)){d=easter(y0);if(d<today)d=easter(y0+1)}
+        else{const r=k.match(/(\d{1,2})\s+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)(?:\s+(\d{4}))?/)||k.match(/(\d{1,2})[/.-](\d{1,2})(?:[/.-](\d{2,4}))?/);
+          if(r){const mo=isNaN(+r[2])?MESI.indexOf(r[2]):+r[2]-1;let y=r[3]?+r[3]:y0;if(y<100)y+=2000;d=new Date(y,mo,+r[1]);if(!r[3]&&d<today)d=new Date(y0+1,mo,+r[1])}}
+        return d};
+      if((m=u.match(/^(?:quanti giorni|quanto)\s+(?:mancano|manca)\s+(.+)$/))){const d=dayOf(m[1]);if(d){const today=new Date();today.setHours(0,0,0,0);const n=Math.round((d-today)/864e5);
+        const s=n===0?'È oggi!':n===1?'Manca 1 giorno.':`Mancano ${n} giorni (${d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}).`;reply(esc(s),s);return true}}
+      if((m=u.match(/^che giorno (?:sara|era|e|cade|cadra)\s+(?:il\s+|l\s*)?(.+)$/))){let d=null;const today=new Date();
+        if(/^domani$/.test(m[1]))d=new Date(Date.now()+864e5);else if(/^dopodomani$/.test(m[1]))d=new Date(Date.now()+2*864e5);else if(/^ieri$/.test(m[1]))d=new Date(Date.now()-864e5);else d=dayOf(m[1]);
+        if(d){const s=d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});const S2=s.charAt(0).toUpperCase()+s.slice(1)+'.';reply(esc(S2),S2);return true}}
+      // caso: moneta, dado, numero
+      if(/^(lancia|tira) (una|la) moneta|^testa o croce/.test(u)){const s=Math.random()<.5?'Testa!':'Croce!';reply(esc(s),s);return true}
+      if((m=u.match(/^(?:lancia|tira) (?:un |il )?dado(?: da (\d+))?/))){const f=+(m[1]||6),s='È uscito '+(1+Math.floor(Math.random()*f))+'.';reply(esc(s),s);return true}
+      if((m=u.match(/^(?:dammi|dimmi|scegli) un numero (?:a caso )?(?:tra|fra|da) (\d+) (?:e|a) (\d+)/))){const a=+m[1],b2=+m[2],s=String(Math.min(a,b2)+Math.floor(Math.random()*(Math.abs(b2-a)+1)));reply(esc(s),s);return true}
+      // barzellette (scritte per Rise)
+      if(/^(raccontami|dimmi|fammi|sai) (una )?(barzelletta|battuta|freddura|cosa divertente)/.test(u)){const J=['Sai perché il computer va sempre dal dottore? Perché ha un virus… ma per fortuna io sono il suo antivirus preferito!','Qual è il colmo per un elettricista? Non essere al corrente delle ultime notizie.','Che cosa fa un pomodoro in banca? Il conto corrente… di salsa!','Perché il libro di matematica è triste? Perché ha troppi problemi.','Cosa dice uno zero a un otto? Bella cintura!','Qual è il colmo per un giardiniere? Avere un figlio che lo pianta in asso.','Sai come si chiama un boomerang che non torna? Un bastone.','Qual è il colmo per un idraulico? Non capire un tubo.','Perché le stelle non vanno mai in vacanza? Perché sono sempre di turno… di notte.','Che cosa fa una mucca al computer? Muuuove il mouse.'];
+        const s=J[Math.floor(Math.random()*J.length)];reply(esc(s),s);return true}
+      // conversioni di unità: "converti 10 miglia in km", "quanti km sono 10 miglia", "30 gradi in fahrenheit"
+      const U={km:['l',1000],chilometri:['l',1000],chilometro:['l',1000],m:['l',1],metri:['l',1],metro:['l',1],cm:['l',.01],centimetri:['l',.01],mm:['l',.001],millimetri:['l',.001],miglia:['l',1609.344],miglio:['l',1609.344],piedi:['l',.3048],piede:['l',.3048],pollici:['l',.0254],pollice:['l',.0254],iarde:['l',.9144],iarda:['l',.9144],
+        kg:['p',1],chili:['p',1],chilo:['p',1],chilogrammi:['p',1],g:['p',.001],grammi:['p',.001],grammo:['p',.001],libbre:['p',.45359237],libbra:['p',.45359237],once:['p',.028349523],oncia:['p',.028349523],tonnellate:['p',1000],
+        litri:['v',1],litro:['v',1],ml:['v',.001],millilitri:['v',.001],galloni:['v',3.785411784],gallone:['v',3.785411784],
+        celsius:['t','c'],centigradi:['t','c'],fahrenheit:['t','f'],kelvin:['t','k'],'km/h':['s',1],'chilometri orari':['s',1],'mph':['s',1.609344],'miglia orarie':['s',1.609344],nodi:['s',1.852]};
+      const UK=Object.keys(U).sort((a,b)=>b.length-a.length).map(x=>x.replace('/','\\/')).join('|');
+      const conv=(v,a,b)=>{const A=U[a],B=U[b];if(!A||!B||A[0]!==B[0])return null;if(A[0]==='t'){const c=A[1]==='c'?v:A[1]==='f'?(v-32)*5/9:v-273.15;return B[1]==='c'?c:B[1]==='f'?c*9/5+32:c+273.15}return v*A[1]/B[1]};
+      if((m=u.match(new RegExp('^(?:converti |quanto (?:fa|fanno|sono) )?([\\d.,]+)\\s*(?:gradi\\s+)?('+UK+')\\s+(?:in|a)\\s+(?:gradi\\s+)?('+UK+')$')))||(m=u.match(new RegExp('^quant[ie] (?:gradi\\s+)?('+UK+') (?:sono|fanno) ([\\d.,]+)\\s*(?:gradi\\s+)?('+UK+')$')))){
+        let v,a,b2;if(/^quant/.test(u)){v=N(m[2]);a=m[3];b2=m[1]}else{v=N(m[1]);a=m[2];b2=m[3]}
+        const r=conv(v,a,b2);if(r!=null){const s=`${fmt(v)} ${a} = ${fmt(r,2)} ${b2}`;reply(`<b>${esc(s)}</b>`,s.replace('=','sono'));return true}}
+      // cambio valute: "quanti dollari sono 100 euro", "100 euro in franchi", "quanto vale un dollaro in euro"
+      {const CK='euro|euri|dollari americani|dollari canadesi|dollari australiani|dollari|dollaro|sterline|sterlina|franchi svizzeri|franco svizzero|franchi|franco|yen|yuan|corone svedesi|zloty|rubli|lire turche|real|rupie';
+       const CC={euro:'EUR',euri:'EUR',dollari:'USD',dollaro:'USD','dollari americani':'USD','dollari canadesi':'CAD','dollari australiani':'AUD',sterline:'GBP',sterlina:'GBP','franchi svizzeri':'CHF','franco svizzero':'CHF',franchi:'CHF',franco:'CHF',yen:'JPY',yuan:'CNY','corone svedesi':'SEK',zloty:'PLN',rubli:'RUB','lire turche':'TRY',real:'BRL',rupie:'INR'};
+       let a=null,f,to;
+       if((m=u.match(new RegExp('^quant[ie] ('+CK+') (?:sono|fanno|valgono) ([\\d.,]+|un|una) ('+CK+')$'))))a=m[2],f=m[3],to=m[1];
+       else if((m=u.match(new RegExp('^(?:converti |cambia |quanto (?:fa|fanno|sono|vale|valgono) )?([\\d.,]+|un|una) ('+CK+') (?:in|a) ('+CK+')$'))))a=m[1],f=m[2],to=m[3];
+       if(a){const amt=/^un/.test(a)?1:N(a);const r=await SYS.call('web.fx',{amount:amt,from:CC[f],to:CC[to]}).catch(()=>({ok:false}));
+         if(r.ok){const s=`${fmt(amt)} ${f} = ${fmt(r.value,2)} ${to}`;reply(`<b>${esc(s)}</b><br><small>Cambio di oggi · fonte ${esc(r.source)}</small>`,s.replace('=','sono'));return true}}}
+      // batteria, spazio, memoria, rete
+      if(/(quanta|livello( della)?|percentuale( della)?|com e la|come sta la) batteria|batteria (ho|rimasta|carica)|quanto (e )?carico/.test(u)){const r=await SYS.call('sys.info').catch(()=>({}));
+        const b2=r.battery;const s=b2?`La batteria è al ${b2.percent}%${/Charging/i.test(b2.status)?', in carica':/Full/i.test(b2.status)?', carica':''}.`:'Questo computer non ha una batteria (o non la vedo).';reply(esc(s),s);return true}
+      if(/(quanto|quanto e lo) spazio (libero|ho|c e|rimane)|spazio (libero )?sul disco/.test(u)){const r=await SYS.call('sys.info').catch(()=>({}));if(r.diskFree!=null){const s=`Sul disco hai ${fmt(r.diskFree/1073741824,1)} GB liberi.`;reply(esc(s),s);return true}}
+      if(/(quanta|com e la) (memoria|ram)/.test(u)){const r=await SYS.call('sys.info').catch(()=>({}));if(r.memTotal){const s=`Stai usando ${fmt(r.memUsed/1073741824,1)} GB di memoria su ${fmt(r.memTotal/1073741824,1)}.`;reply(esc(s),s);return true}}
+      if(/(a (che|quale) (rete|wifi|wi fi) sono (collegato|connesso)|sono (collegato|connesso) a internet|funziona internet|c e (la )?connessione)/.test(u)){const r=await SYS.call('net.status').catch(()=>({}));
+        const on=r.connectivity==='full',act=(r.active||[]).map(x=>typeof x==='string'?x:(x.name||x.ssid||'')).filter(Boolean);const s=on?`Sì, sei collegato a internet${act.length?' tramite '+act.join(', '):''}.`:'In questo momento internet non funziona. Prova Impostazioni → Rete → Ripara.';reply(esc(s),s);return true}
+      // riavvio, sospensione, cestino
+      if(/^(riavvia|fai ripartire)( il)? (computer|pc|sistema)$/.test(u)){const box=add('bot',`Riavvio il computer? <span class="md-act"><button class="btn primary" data-y>Sì</button><button class="btn" data-n>No</button></span>`);
+        PENDING={yes:()=>{PENDING=null;box.querySelector('.md-act').textContent='Riavvio…';SYS.call('power',{action:'reboot'})},no:()=>{PENDING=null;box.querySelector('.md-act').textContent='Va bene, niente riavvio.'}};
+        $('[data-y]',box).onclick=()=>PENDING&&PENDING.yes();$('[data-n]',box).onclick=()=>PENDING&&PENDING.no();speak('Riavvio il computer?');return true}
+      if(/^(sospendi|metti in (pausa|standby|stand by)|vai in (standby|stand by|sospensione)|addormenta)( il)?( computer| pc)?$/.test(u)){reply('Metto il computer in pausa: per riprendere premi un tasto o il pulsante di accensione.','Vado in pausa.');setTimeout(()=>SYS.call('power',{action:'suspend'}),2500);return true}
+      if(/^svuota (il )?cestino$/.test(u)){const box=add('bot',`Svuoto il cestino? I file spariscono per sempre. <span class="md-act"><button class="btn primary" data-y>Sì</button><button class="btn" data-n>No</button></span>`);
+        PENDING={yes:async()=>{PENDING=null;await SYS.call('fs.trashEmpty');box.querySelector('.md-act').textContent='Fatto, cestino vuoto.';speak('Fatto.')},no:()=>{PENDING=null;box.querySelector('.md-act').textContent='Va bene.'}};
+        $('[data-y]',box).onclick=()=>PENDING&&PENDING.yes();$('[data-n]',box).onclick=()=>PENDING&&PENDING.no();speak('Svuoto il cestino?');return true}
+      // note: "prendi nota: comprare il latte", "leggimi le note"
+      if((m=q.trim().match(/^(?:prendi (?:una )?nota|annota|appunta|scrivi (?:una nota|nelle note|sulle note)|aggiungi (?:alle|una) not[ae])\s*[:,]?\s*(?:che\s+)?(.+)$/i))){const cur=store.get('note','');const line='- '+m[1].trim().replace(/[.]+$/,'')+' ('+new Date().toLocaleDateString('it-IT',{day:'numeric',month:'short'})+')';
+        store.set('note',(cur.trim()?cur.replace(/\s+$/,'')+'\n':'')+line);reply(`${I('notes',18)} Scritto nelle Note: <b>${esc(m[1].trim())}</b>`,'Fatto, l’ho scritto nelle note.');return true}
+      if(/^(leggimi|leggi|dimmi|mostrami|apri) (le )?(mie )?note$/.test(u)){const cur=store.get('note','').trim();if(/^(apri|mostrami)/.test(u)||!cur){openApp('notes');reply('Ecco le note.','Ecco le note.');return true}
+        const last=cur.split('\n').filter(x=>x.trim()).slice(-6);reply(`${I('notes',18)} Le ultime note:<br>${last.map(esc).join('<br>')}`,'Ecco le ultime note: '+last.join('. '));return true}
+      // navigatore: "portami a roma", "come arrivo al colosseo", "indicazioni per piazza duomo milano"
+      if((m=u.match(/^(?:portami|accompagnami|come (?:arrivo|si arriva|vado|faccio ad arrivare)|indicazioni (?:stradali )?per|strada per|percorso per|naviga(?:tore)? (?:verso|per|fino a)|quanto ci vuole (?:per andare|ad andare) )\s*(?:a|ad|al|alla|allo|ai|alle|in|verso|fino a|da)?\s+(.+)$/))){
+        await openUrl('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(m[1]));reply(`${I('browser',18)} Apro il navigatore per <b>${esc(m[1])}</b>.`,'Ecco la strada per '+m[1]+'.');return true}
+      if((m=u.match(/^(?:dov e|dove si trova|mostrami sulla mappa|cerca sulla mappa)\s+(.+)$/))&&!/(file|cartella|documento|preventivo|email)/.test(m[1])){await openUrl('https://www.google.com/maps/search/'+encodeURIComponent(m[1]));reply(`${I('browser',18)} Ecco <b>${esc(m[1])}</b> sulla mappa.`,'Ecco '+m[1]+' sulla mappa.');return true}
+      // impostazioni: "apri le impostazioni del wifi"
+      if((m=u.match(/^(?:apri|aprimi|vai (?:nelle|alle))\s+(?:le )?impostazioni(?:\s+(?:del|della|dello|dei|di)\s+(.+))?$/))){const k=m[1]||'';
+        const g=/wi ?fi|rete|internet/.test(k)?'wifi':/volume|audio|suono/.test(k)?'vol':/schermo|luminosita|display/.test(k)?'bright':/aggiorn/.test(k)?'upd':/assistente|email|posta/.test(k)?'perm':'';
+        openApp('settings',g?{goto:g}:{});reply('Ecco le impostazioni.','Ecco le impostazioni.');return true}
+      // programmi: "apri la calcolatrice", "apri word", "avvia spotify"
+      if((m=u.match(/^(?:apri|aprimi|avvia|lancia|fai partire|accendi)\s+(?:il |la |lo |l |gli |le )?(?:programma |app |applicazione )?(.+)$/))){const n=m[1].trim();
+        const AL={'calcolatrice':'calc','calcolatore':'calc','note':'notes','appunti':'notes','esplora file':'files','file':'files','cartelle':'files','negozio':'store','store':'store','visualizzatore':'viewer','foto':'viewer','impostazioni':'settings','assistente':'assistant','installa rise':'installer'};
+        const NAL={'word':'word','wordcraft':'word','excel':'sheet','fogli':'sheet','foglio di calcolo':'sheet','gridcraft':'sheet','powerpoint':'deck','presentazioni':'deck','deckcraft':'deck','browser':'browser','internet':'browser','lettore':'player','video':'player','musica':'player'};
+        const id=AL[n]||Object.keys(APPS).find(k=>APPS[k].name.toLowerCase()===n);
+        if(id&&APPS[id]){openApp(id);reply(`Apro <b>${esc(APPS[id].name)}</b>.`,'Ecco '+APPS[id].name+'.');return true}
+        if(!(NAPPS||[]).length){try{NAPPS=await SYS.call('native.list')||[]}catch(e){}}
+        const nid=NAL[n]||((NAPPS||[]).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().startsWith(n+' ')||(n.length>=4&&x.name.toLowerCase().includes(n))||x.id===n)||{}).id;
+        if(nid){const r=await SYS.call('native.open',{id:nid}).catch(()=>({ok:false}));if(r.ok!==false){const nm=((NAPPS||[]).find(x=>x.id===nid)||{}).name||n;reply(`Apro <b>${esc(nm)}</b>.`,'Ecco '+nm+'.');return true}}}
+      // chi è / cos'è: Wikipedia (prima di disturbare il cervello)
+      if((m=u.match(/^(?:chi (?:e|era|sono|erano|fu)|cos e|cosa e|che cos e|cosa sono|che cosa sono|cosa significa|cosa vuol dire|parlami di|dimmi (?:qualcosa )?(?:su|di)|spiegami cos e)\s+(.+)$/))&&!/(questo|questa|quest|file|email|mail|preventivo|documento|tu|rise)\b/.test(m[1])){
+        const r=await SYS.call('web.wiki',{q:m[1]}).catch(()=>({ok:false}));if(r.ok){const short=r.text.split(/(?<=\.)\s/).slice(0,3).join(' ');
+          reply(`<b>${esc(r.title)}</b><br>${esc(short)}${r.url?`<br><small>Fonte: Wikipedia</small>`:''}`,short);return true}}
+      }
       return false}
     async function go(){const q=ta.value.trim();if(!q||busy)return;ta.value='';const T0=performance.now(),stt=STT_SEC;STT_SEC=null;
       const timing=()=>{const d=document.createElement('div');d.className='ai-time';d.textContent='⏱ '+(stt!=null?'capito in '+String(stt).replace('.',',')+' s · ':'')+'risposta in '+String(((performance.now()-T0)/1000).toFixed(1)).replace('.',',')+' s';log.appendChild(d);log.scrollTop=log.scrollHeight};
@@ -1908,14 +2131,25 @@ function renderAssistant(b,opts){
       busy=true;send.textContent='Ferma';
       try{if(await quick(q)){timing();busy=false;send.textContent='Invia';if(FST==='think')faceState('idle');ta.focus();return}}catch(e){}
       let tick=null,out=null,spokenUpTo=0;
+      let useThink=THINK,restarted=false,retried=false,retriedEmpty=false,STALL=false,wd=null;
+      // il motore del cervello non risponde (caduto o non partito): lo si riavvia una volta
+      const restartEngine=async()=>{out.innerHTML='<small class="ai-phase">Il cervello si era fermato: lo riavvio… <span class="ai-sec"></span></small>';
+        try{await SYS.call('ai.start',{model:ST.model});const s2=await SYS.call('ai.status');if(s2&&s2.port)ST.port=s2.port}catch(e){}};
       try{for(let round=0;round<8;round++){
         const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',think='',calls={},t0=performance.now(),first=false;
         clearInterval(tick);tick=setInterval(()=>{const e=$('.ai-sec',out);if(e)e.textContent=Math.round((performance.now()-t0)/1000)+' s'},1000);
         ctrl=new AbortController();
-        const res=await fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},signal:ctrl.signal,
-          body:JSON.stringify({messages:[{role:'system',content:AI_SYS()},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:8000,cache_prompt:true,chat_template_kwargs:{enable_thinking:THINK}})});
+        let res;
+        try{res=await fetch(`http://127.0.0.1:${ST.port}/v1/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json'},signal:ctrl.signal,
+          body:JSON.stringify({messages:[{role:'system',content:AI_SYS()},...msgs.slice(-12)],tools:AI_TOOLS,stream:true,max_tokens:8000,cache_prompt:true,chat_template_kwargs:{enable_thinking:useThink}})});
+          if(!res.ok)throw new TypeError('http '+res.status)}
+        catch(e){if(e.name!=='AbortError'&&!restarted){restarted=true;await restartEngine();out.remove();round--;continue}throw e}
+        // sorveglianza: se per troppo tempo non arriva niente, si interrompe e si riprova
+        let lastData=performance.now(),gotAny=false;STALL=false;clearInterval(wd);
+        wd=setInterval(()=>{if(performance.now()-lastData>(gotAny?40000:120000)){STALL=true;ctrl.abort()}},2000);
         const rd=res.body.getReader(),dec=new TextDecoder();let buf='';
-        while(true){const {value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});let i;
+        try{
+        while(true){const {value,done}=await rd.read();if(done)break;lastData=performance.now();gotAny=true;buf+=dec.decode(value,{stream:true});let i;
           while((i=buf.indexOf('\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line.startsWith('data:'))continue;const d=line.slice(5).trim();if(d==='[DONE]')continue;
             let j;try{j=JSON.parse(d)}catch(e){continue}const dl=j.choices&&j.choices[0]&&j.choices[0].delta||{};
             if(dl.content){text+=dl.content;const vis=text.replace(/<think>[\s\S]*?(<\/think>|$)/g,'');if(vis.trim()){out.innerHTML=mdLite(vis);log.scrollTop=log.scrollHeight}
@@ -1926,8 +2160,12 @@ function renderAssistant(b,opts){
             const c0=Object.values(calls)[0];
             if(c0&&!text){const m=c0.args.match(/"testo"\s*:\s*"((?:[^"\\]|\\.)*)/);const live=m?m[1].replace(/\\n/g,'\n').replace(/\\"/g,'"').replace(/\\\\/g,'\\'):'';
               out.innerHTML=(c0.name==='crea_preventivo'?`${DOTS} <small class="ai-phase">${I('m-word',16)} Preparo il preventivo… <span class="ai-sec"></span></small>`:c0.name==='crea_documento_word'?`${DOTS} <small class="ai-phase">${I('m-word',16)} Scrivo il documento… <span class="ai-sec"></span></small>`:DOTS)+(live?'<div class="ai-live">'+mdLite(live)+'</div>':'');log.scrollTop=log.scrollHeight}}}
+        }catch(e){clearInterval(wd);if(STALL&&!retried){retried=true;useThink=false;out.innerHTML='<small class="ai-phase">Ci stavo mettendo troppo: riprovo in modo più rapido…</small>';round--;continue}throw e}
+        clearInterval(wd);
         clearInterval(tick);
         const list=Object.values(calls);
+        // risposta vuota (succede ogni tanto ai modelli piccoli): si riprova una volta
+        if(!list.length&&!text.replace(/<think>[\s\S]*?(<\/think>|$)/g,'').trim()&&!retriedEmpty){retriedEmpty=true;useThink=false;out.remove();round--;continue}
         if(!list.length){const clean=text.replace(/<think>[\s\S]*?<\/think>/g,'').trim();msgs.push({role:'assistant',content:clean});
           out.innerHTML=mdLite(clean)||'…';if(clean.length>350||/\n\s*([-*•]|\d+[.)])\s|^#/m.test(clean)||!VOICE)out.classList.add('keep');thinkBox(out,think,t0);{const rest=clean.slice(spokenUpTo).trim();if(VOICE&&rest)SYS.call('voice.say',{voice:VOICE,text:rest,append:spokenUpTo>0}).catch(()=>{});spokenUpTo=0}if(clean.length>120){const act=document.createElement('div');act.className='ai-act';act.innerHTML=`<button class="btn" data-doc>${I('m-word',16)} Crea documento Word con questo testo</button><button class="btn" data-copy>Copia</button>`;out.appendChild(act);
             $('[data-doc]',act).onclick=async()=>{const h=clean.match(/^#{1,3}\s+(.+)$/m);await runTool('crea_documento_word',{titolo:h?h[1].replace(/\*/g,'').slice(0,60):'Documento',testo:clean})};
@@ -1940,7 +2178,7 @@ function renderAssistant(b,opts){
         if(!needMore){if(list.some(c=>c.name==='prepara_email')){msgs.push({role:'assistant',content:'Email pronta, aspetto conferma.'});break}
           const done=list.some(c=>c.name==='apri_sito')?'Fatto, l’ho aperto nel browser.':list.some(c=>/^crea_/.test(c.name))?'Fatto! Il documento è aperto: puoi correggerlo e salvarlo. Vuoi che cambi qualcosa?':'Fatto!';
           msgs.push({role:'assistant',content:done});add('bot',esc(done));speak(done);break}}
-      }catch(e){if(e.name==='AbortError'){if(out&&$('.ai-dots',out))out.innerHTML='<small class="ai-phase">Interrotto.</small>'}else add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
+      }catch(e){clearInterval(wd);if(e.name==='AbortError'){if(out&&out.isConnected)out.innerHTML=STALL?'<span class="err">Il cervello non risponde. Riprova, magari con una domanda più corta.</span>':'<small class="ai-phase">Interrotto.</small>';if(STALL)out.classList.add('keep')}else add('bot','<span class="err">Non riesco a parlare con l’Assistente. Chiudi e riapri l’Assistente.</span>')}
       clearInterval(tick);
       timing();busy=false;ctrl=null;send.textContent='Invia';if(FST==='think')faceState('idle');ta.focus()}
     ta.focus()}

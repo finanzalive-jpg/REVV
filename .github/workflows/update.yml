@@ -1,0 +1,38 @@
+name: Update package
+
+# A ogni modifica su main: pacchetto di aggiornamento per i computer con Rise installato (circa 2 minuti).
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-package
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+
+      - name: Build update package
+        run: ./build/make-update.sh "0.5-dev.$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}" out-update
+
+      - name: Publish to the "updates" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view updates >/dev/null 2>&1 || gh release create updates --prerelease \
+            --title "Aggiornamenti di Rise" \
+            --notes "Pacchetto usato da Rise installato per aggiornarsi da solo (Impostazioni → Aggiornamenti). Non serve scaricarlo a mano."
+          # prima il pacchetto, poi la scheda con l'impronta: chi legge la scheda trova già il pacchetto giusto
+          gh release upload updates out-update/rise-update.tar.gz --clobber
+          gh release upload updates out-update/rise-update.json --clobber

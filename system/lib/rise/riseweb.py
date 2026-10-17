@@ -225,3 +225,54 @@ def markets(a):
 
 
 CMDS.update({'web.markets': markets})
+
+
+# ---------------- risposte veloci senza il "cervello" ----------------
+def wiki(a):
+    """"Chi è…", "cos'è…": il riassunto di Wikipedia in italiano (un secondo, niente IA)."""
+    import json
+    q = (a.get('q') or '').strip()
+    if not q:
+        return {'ok': False}
+    try:
+        page, _, _ = _get('https://it.wikipedia.org/w/api.php?' + urllib.parse.urlencode(
+            {'action': 'opensearch', 'search': q, 'limit': 1, 'namespace': 0, 'format': 'json'}), timeout=8)
+        res = json.loads(page)
+        if not res[1]:
+            return {'ok': False, 'message': 'Non trovo “%s” su Wikipedia.' % q}
+        title = res[1][0]
+        page, _, _ = _get('https://it.wikipedia.org/api/rest_v1/page/summary/' + urllib.parse.quote(title.replace(' ', '_')), timeout=8)
+        s = json.loads(page)
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco a raggiungere Wikipedia (%s).' % e}
+    if s.get('type') == 'disambiguation':
+        return {'ok': False, 'message': '“%s” può voler dire più cose: sii più preciso.' % q}
+    text = s.get('extract') or ''
+    return {'ok': bool(text), 'title': s.get('title') or title, 'text': text,
+            'url': (s.get('content_urls') or {}).get('desktop', {}).get('page', '')}
+
+
+CUR = {'euro': 'EUR', 'euri': 'EUR', 'dollari': 'USD', 'dollaro': 'USD', 'dollari americani': 'USD', 'sterline': 'GBP',
+       'sterlina': 'GBP', 'franchi svizzeri': 'CHF', 'franchi': 'CHF', 'franco svizzero': 'CHF', 'franco': 'CHF',
+       'yen': 'JPY', 'yuan': 'CNY', 'dollari canadesi': 'CAD', 'dollari australiani': 'AUD', 'corone svedesi': 'SEK',
+       'zloty': 'PLN', 'rubli': 'RUB', 'lire turche': 'TRY', 'real': 'BRL', 'rupie': 'INR'}
+
+
+def fx(a):
+    """Cambio valute: "quanti dollari sono 100 euro" (Banca Centrale Europea, con Yahoo di riserva)."""
+    import json
+    amount = float(a.get('amount') or 1)
+    f, t = (a.get('from') or 'EUR').upper(), (a.get('to') or 'USD').upper()
+    try:
+        page, _, _ = _get('https://api.frankfurter.app/latest?' + urllib.parse.urlencode({'amount': amount, 'from': f, 'to': t}), timeout=8)
+        v = json.loads(page)['rates'][t]
+        return {'ok': True, 'value': v, 'from': f, 'to': t, 'amount': amount, 'source': 'BCE'}
+    except Exception:
+        try:
+            q = _quote('%s%s=X' % (f, t))
+            return {'ok': True, 'value': round(amount * q['price'], 4), 'from': f, 'to': t, 'amount': amount, 'source': 'Yahoo'}
+        except Exception as e:
+            return {'ok': False, 'message': 'Non riesco a leggere il cambio (%s).' % e}
+
+
+CMDS.update({'web.wiki': wiki, 'web.fx': fx})

@@ -213,7 +213,7 @@ def bright_set(a):
 
 
 def power(a):
-    act = 'reboot' if a.get('action') == 'reboot' else 'poweroff'
+    act = {'reboot': 'reboot', 'suspend': 'suspend'}.get(a.get('action'), 'poweroff')
     run(['sync'])
     rc, _, err = root(['systemctl', act])
     return {'ok': rc == 0, 'message': err}
@@ -1109,7 +1109,7 @@ try:
     CMDS.update(riseai.CMDS)
 except Exception:  # senza il modulo l'Assistente risulta semplicemente non disponibile
     pass
-for _m in ('risevoice', 'riseweb', 'riseapps', 'riseauto', 'riseremind'):
+for _m in ('risevoice', 'riseweb', 'riseapps', 'riseauto', 'riseremind', 'riseupdate', 'riseinstall'):
     try:
         CMDS.update(__import__(_m).CMDS)
     except Exception:

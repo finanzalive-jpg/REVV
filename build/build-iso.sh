@@ -57,6 +57,18 @@ chroot "$CH" apt-get update -qq
 # shellcheck disable=SC2046
 chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat "$ROOT/build/packages.txt")
 
+log "3a/9 Installatore: avvio con Secure Boot e dual boot con Windows (GRUB firmato, shim, os-prober)"
+# grub-install non deve partire adesso (siamo nella cartella di costruzione): lo si disattiva e poi lo si rimette
+chroot "$CH" dpkg-divert --local --rename --add /usr/sbin/grub-install >/dev/null
+ln -sf /bin/true "$CH/usr/sbin/grub-install"
+chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    grub-efi-amd64-signed shim-signed grub-efi-amd64-bin grub-pc-bin grub2-common efibootmgr os-prober \
+    parted gdisk squashfs-tools mokutil dosfstools e2fsprogs || echo "ATTENZIONE: pacchetti dell'installatore mancanti"
+rm -f "$CH/usr/sbin/grub-install"
+chroot "$CH" dpkg-divert --local --rename --remove /usr/sbin/grub-install >/dev/null
+for t in grub-install grub-mkconfig efibootmgr os-prober parted unsquashfs; do echo "$t: $(chroot "$CH" sh -c "command -v $t" || echo MANCANTE)"; done
+ls "$CH/usr/lib/shim/" 2>/dev/null | head -5
+
 log "3b/9 Suite Office: WordCraft, GridCraft, DeckCraft (ultima versione ufficiale)"
 mkdir -p "$CH/tmp/craft"
 for app in wordcraft gridcraft deckcraft; do
@@ -146,12 +158,13 @@ rm -rf /tmp/piper-dl
 
 log "4/9 Desktop di Rise (offline: caratteri e lettori di file inclusi)"
 D="$CH/opt/rise"; mkdir -p "$D/fonts" "$D/lib"
-NPM="$WORK/npm"; mkdir -p "$NPM"
+NPM="$WORK/npm"
 # NPM_CACHE: cartella con i pacchetti già scaricati (facoltativa, accelera le prove locali)
-[ -n "${NPM_CACHE:-}" ] && [ -d "$NPM_CACHE" ] && cp "$NPM_CACHE"/*.tgz "$NPM/" 2>/dev/null || true
-( cd "$NPM" && for p in @fontsource/onest@5 @fontsource/unbounded@5 @fontsource/jetbrains-mono@5 @fontsource/source-serif-4@5 pdfjs-dist@3.11.174 mammoth@1.6.0 xlsx@0.18.5; do n="$(echo "$p" | sed 's/^@//; s/\//-/; s/@.*//')"; ls "$n"-*.tgz >/dev/null 2>&1 || npm pack -q "$p" >/dev/null; done
-  for f in *.tgz; do mkdir -p "x/${f%.tgz}"; tar xzf "$f" -C "x/${f%.tgz}"; done )
+"$ROOT/build/npm-libs.sh" "$NPM"
 "$ROOT/build/install-system.sh" "$CH" "$NPM/x"
+# versione installata: serve agli aggiornamenti dal web per sapere se c'è qualcosa di nuovo
+BUILD_ID="$(git -C "$ROOT" log -1 --format=%ct 2>/dev/null || date +%s)"
+printf '{"build": %s, "version": "%s", "commit": "%s"}\n' "$BUILD_ID" "$VERSION" "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo ?)" > "$CH/etc/rise-build"
 
 log "5/9 Configurazione di sistema"
 for d in Documenti Immagini Musica Download Video Scrivania; do mkdir -p "$CH/etc/skel/$d"; done
@@ -208,6 +221,7 @@ log "8/9 Immagine compressa del sistema"
 mkdir -p "$ISO/casper" "$ISO/boot/grub" "$ISO/.disk"
 cp "$CH/boot/vmlinuz-$KVER" "$ISO/casper/vmlinuz"
 cp "$CH/boot/initrd.img-$KVER" "$ISO/casper/initrd"
+cp "$CH/boot/config-$KVER" "$ISO/casper/config" 2>/dev/null || true   # serve all'installatore
 chmod 644 "$ISO/casper/vmlinuz" "$ISO/casper/initrd"
 chroot "$CH" dpkg-query -W --showformat='${Package} ${Version}\n' > "$ISO/casper/filesystem.manifest"
 # Le cartelle /proc /sys /dev /run /tmp /boot devono esistere (vuote) o l'avvio si blocca
