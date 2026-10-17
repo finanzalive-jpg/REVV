@@ -7,6 +7,7 @@ import glob
 import json
 import os
 import re
+import shutil
 import smtplib
 import subprocess
 import sys
@@ -826,3 +827,104 @@ def bt_power(a):
 
 CMDS.update({'mail.inbox': mail_inbox, 'mail.read': mail_read, 'doc.read': read_doc, 'news.get': news,
              'wifi.join': wifi_join, 'bt.power': bt_power})
+
+
+# ---------------- archivi: ZIP, RAR, 7z, tar ----------------
+def _unique(path):
+    base, ext = os.path.splitext(path)
+    n, p = 2, path
+    while os.path.exists(p):
+        p = '%s (%d)%s' % (base, n, ext)
+        n += 1
+    return p
+
+
+def compress(a):
+    """Comprime file e cartelle in un .zip accanto al primo (Esplora file: "Comprimi")."""
+    paths = [os.path.abspath(os.path.expanduser(p)) for p in (a.get('paths') or []) if os.path.exists(os.path.expanduser(p))]
+    if not paths and a.get('testo'):
+        c = _candidates(a['testo'], a.get('tipo') or '')
+        paths = [c[0]['path']] if c else []
+    if not paths:
+        return {'ok': False, 'message': 'Non trovo cosa comprimere.'}
+    name = (a.get('nome') or (os.path.basename(paths[0]) if len(paths) == 1 else 'Archivio')).strip()
+    name = re.sub(r'[\\/:*?"<>|]+', ' ', os.path.splitext(name)[0] if not os.path.isdir(paths[0]) and len(paths) == 1 else name)
+    out = _unique(os.path.join(os.path.dirname(paths[0]), name + '.zip'))
+    count = 0
+    with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+        for p in paths:
+            root = os.path.dirname(p)
+            if os.path.isdir(p):
+                for dp, dns, fns in os.walk(p):
+                    for f in fns:
+                        full = os.path.join(dp, f)
+                        z.write(full, os.path.relpath(full, root))
+                        count += 1
+            else:
+                z.write(p, os.path.basename(p))
+                count += 1
+    return {'ok': True, 'path': out, 'name': os.path.basename(out), 'files': count, 'size': os.path.getsize(out),
+            'folder': os.path.basename(os.path.dirname(out))}
+
+
+def extract(a):
+    """Estrae un archivio in una cartella col suo nome, accanto all'archivio. Mai fuori da quella cartella."""
+    src = os.path.abspath(os.path.expanduser(a.get('path') or ''))
+    if not os.path.isfile(src) and a.get('testo'):
+        c = [x for x in _candidates(a['testo'], 'file') if re.search(r'\.(zip|rar|7z|tar|gz|tgz|bz2|xz)$', x['name'], re.I)]
+        src = c[0]['path'] if c else ''
+    if not os.path.isfile(src):
+        return {'ok': False, 'message': 'Non trovo l’archivio.'}
+    low = src.lower()
+    stem = re.sub(r'\.(tar\.gz|tar\.bz2|tar\.xz|zip|rar|7z|tgz|tar)$', '', os.path.basename(src), flags=re.I)
+    dest = _unique(os.path.join(os.path.dirname(src), stem))
+    os.makedirs(dest)
+    try:
+        if low.endswith('.zip'):
+            with zipfile.ZipFile(src) as z:
+                if a.get('password'):
+                    z.setpassword(a['password'].encode())
+                for m in z.infolist():
+                    target = os.path.realpath(os.path.join(dest, m.filename))
+                    if not target.startswith(os.path.realpath(dest) + os.sep) and target != os.path.realpath(dest):
+                        continue                               # nomi pericolosi ("../"): si saltano
+                    z.extract(m, dest)
+        elif re.search(r'\.(tar|tgz|tar\.gz|tar\.bz2|tar\.xz)$', low):
+            import tarfile
+            with tarfile.open(src) as t:
+                try:
+                    t.extractall(dest, filter='data')
+                except TypeError:
+                    t.extractall(dest, members=[m for m in t.getmembers() if not (m.name.startswith('/') or '..' in m.name.split('/'))])
+        else:                                                  # .rar, .7z e altri: 7-Zip
+            exe = next((x for x in ('7z', '7zz', '7za') if subprocess.run(['sh', '-c', 'command -v ' + x], capture_output=True).returncode == 0), None)
+            if not exe:
+                os.rmdir(dest)
+                return {'ok': False, 'message': 'Per aprire questo tipo di archivio manca 7-Zip.'}
+            r = subprocess.run([exe, 'x', '-y', '-o' + dest, '-p' + (a.get('password') or ''), src], capture_output=True, text=True, timeout=1800)
+            if r.returncode != 0:
+                if 'Wrong password' in r.stderr + r.stdout or 'password' in (r.stderr + r.stdout).lower():
+                    shutil.rmtree(dest, ignore_errors=True)
+                    return {'ok': False, 'need': 'password', 'message': 'Questo archivio è protetto da password.'}
+                raise RuntimeError((r.stderr or r.stdout).strip()[-200:])
+    except RuntimeError as e:
+        if 'password' in str(e).lower() or 'encrypted' in str(e).lower():
+            shutil.rmtree(dest, ignore_errors=True)
+            return {'ok': False, 'need': 'password', 'message': 'Questo archivio è protetto da password.'}
+        return {'ok': False, 'message': 'Non riesco ad aprire l’archivio: %s' % e}
+    except Exception as e:
+        return {'ok': False, 'message': 'Non riesco ad aprire l’archivio: %s' % e}
+    # un'unica cartella dentro: si "toglie un livello" per non avere prova/prova/…
+    inner = os.listdir(dest)
+    if len(inner) == 1 and os.path.isdir(os.path.join(dest, inner[0])):
+        tmp = dest + '.rise-tmp'
+        os.rename(os.path.join(dest, inner[0]), tmp)
+        os.rmdir(dest)
+        if not os.path.exists(os.path.join(os.path.dirname(dest), inner[0])):
+            dest = os.path.join(os.path.dirname(dest), inner[0])      # si tiene il nome della cartella originale
+        os.rename(tmp, dest)
+    n = sum(len(f) for _, _, f in os.walk(dest))
+    return {'ok': True, 'path': dest, 'name': os.path.basename(dest), 'files': n, 'folder': os.path.basename(os.path.dirname(dest))}
+
+
+CMDS.update({'arch.compress': compress, 'arch.extract': extract})

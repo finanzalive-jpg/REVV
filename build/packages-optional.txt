@@ -1,0 +1,9 @@
+# Pacchetti utili ma non indispensabili: si installano uno alla volta, se uno manca la ISO si fa lo stesso.
+# Stampanti: CUPS, stampanti di rete che compaiono da sole, USB senza driver, driver HP/Brother/Gutenprint
+cups cups-client cups-bsd cups-filters cups-browsed ipp-usb printer-driver-hpcups printer-driver-gutenprint printer-driver-brlaser
+# Archivi: 7-Zip (anche RAR in lettura)
+7zip 7zip-rar unrar
+# Radar di rete: marche dei dispositivi
+ieee-data
+# Bluetooth: invio di file ai telefoni
+bluez-obexd

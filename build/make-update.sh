@@ -13,7 +13,7 @@ STAGE="$WORK/pkg/root"; mkdir -p "$STAGE"
 "$ROOT/build/install-system.sh" "$STAGE" "$WORK/npm/x" >/dev/null
 # l'installazione personalizza questi file: l'aggiornamento non li tocca
 rm -f "$STAGE/etc/greetd/config.toml" "$STAGE/etc/casper.conf"
-cp "$ROOT/build/packages.txt" "$WORK/pkg/packages.txt"
+cat "$ROOT/build/packages.txt" "$ROOT/build/packages-optional.txt" | grep -v '^#' > "$WORK/pkg/packages.txt"
 BUILD_ID="$(git -C "$ROOT" log -1 --format=%ct)"
 COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)"
 DATE="$(git -C "$ROOT" log -1 --format=%cI)"
