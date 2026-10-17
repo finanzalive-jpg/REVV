@@ -658,8 +658,18 @@ def wake_config(a):
         os.makedirs(os.path.dirname(WAKE_CONF), exist_ok=True)
         json.dump(c, open(WAKE_CONF, 'w'), ensure_ascii=False)
         _wake_stop()                                    # il ciclo la riavvia con i nomi nuovi
-    return {'ok': True, 'enabled': c['enabled'], 'names': c['names'], 'available': _wake_ok(),
-            'running': bool(_wake['proc'] and _wake['proc'].poll() is None)}
+    why = ''
+    if not os.access(WAKE_PY, os.X_OK):
+        why = 'manca il programma di riconoscimento (vosk)'
+    elif not _wake_model():
+        why = 'manca il modello italiano di riconoscimento'
+    tail = ''
+    try:
+        tail = [l for l in open('/tmp/rise-attivazione.log', errors='replace').read().splitlines() if l.strip()][-1][-160:]
+    except (OSError, IndexError):
+        pass
+    return {'ok': True, 'enabled': c['enabled'], 'names': c['names'], 'available': _wake_ok(), 'why': why,
+            'running': bool(_wake['proc'] and _wake['proc'].poll() is None), 'started': bool(_wake['cb']), 'log': tail}
 
 CMDS = {'voice.status': status, 'voice.setup': setup, 'voice.listenStart': listen_start,
         'voice.listenStop': listen_stop, 'voice.listenCancel': listen_cancel, 'voice.say': say,

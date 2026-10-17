@@ -35,10 +35,13 @@ def main():
     names = {k: norm(v) for k, v in json.loads(sys.argv[2]).items() if norm(v)}
     phrases = sorted({'%s %s' % (p, n) for n in names.values() for p in PREFIX})
     rec = KaldiRecognizer(model, RATE, json.dumps(phrases + ['[unk]'], ensure_ascii=False))
-    if shutil.which('arecord'):
-        cmd = ['arecord', '-q', '-f', 'S16_LE', '-r', str(RATE), '-c', '1', '-t', 'raw']
+    # si passa da PipeWire (parec), che usa il microfono scelto dal sistema; arecord diretto su ALSA
+    # su molti portatili prende l'ingresso cuffie invece del microfono interno
+    if shutil.which('parec'):
+        cmd = ['parec', '--raw', '--rate=%d' % RATE, '--channels=1', '--format=s16le', '--latency-msec=100']
     else:
-        cmd = ['pw-record', '--rate', str(RATE), '--channels', '1', '--format', 's16', '-']
+        cmd = ['arecord', '-q', '-f', 'S16_LE', '-r', str(RATE), '-c', '1', '-t', 'raw']
+    print('registro con:', cmd[0], file=sys.stderr, flush=True)
     mic = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     print('pronto', flush=True)
     paused, last = False, 0.0
@@ -71,6 +74,8 @@ def main():
             continue
         if rec.AcceptWaveform(data):
             text = json.loads(rec.Result()).get('text', '')
+            if text:
+                print('sentito:', text, file=sys.stderr, flush=True)
         else:
             text = json.loads(rec.PartialResult()).get('partial', '')
         if not text or time.time() - last < 2.5:
@@ -89,6 +94,7 @@ def heard(words, names):
                 if ' '.join(words[i + 1:i + 1 + len(n.split())]) == n:
                     return who
     return None
+
 
 if __name__ == '__main__':
     main()

@@ -3,7 +3,7 @@ casper initramfs-tools systemd-sysv sudo locales tzdata kbd console-setup keyboa
 network-manager wpasupplicant iw wireless-regdb ca-certificates
 greetd cage python3-gi gir1.2-gtk-4.0 gir1.2-webkit-6.0
 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav gstreamer1.0-pipewire
-pipewire pipewire-pulse wireplumber dbus-user-session
+pipewire pipewire-pulse pipewire-alsa pulseaudio-utils wireplumber dbus-user-session
 libgl1-mesa-dri mesa-vulkan-drivers libegl-mesa0
 fonts-noto-core fonts-dejavu-core fonts-noto-color-emoji fonts-liberation fonts-croscore fonts-noto-mono adwaita-icon-theme
 brightnessctl ubuntu-drivers-common pciutils usbutils
