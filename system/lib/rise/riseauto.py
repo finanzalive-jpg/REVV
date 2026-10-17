@@ -63,6 +63,31 @@ def make_folder(a):
             'where': os.path.basename(base) or 'cartella personale'}
 
 
+# ---------------- dove salvare: "nella cartella prova", "sul desktop" ----------------
+def resolve_folder(name):
+    """Cartella in cui salvare un documento. Vuoto → Documenti. Accetta luoghi (desktop, download…),
+    nomi di cartelle esistenti ("prova", "cartella clienti sul desktop") o un percorso."""
+    docs = os.path.join(HOME, 'Documenti')
+    n = (name or '').strip()
+    if not n:
+        return docs, ''
+    if n.startswith(('/', '~')):
+        p = os.path.expanduser(n)
+        return (p, '') if os.path.isdir(p) else (docs, 'non trovata')
+    low = _norm(n)
+    words = [w for w in re.findall(r'\w+', re.sub(r'\b(cartell\w*|nella|nel|sul|sulla|in|la|il)\b', ' ', low))]
+    only_place = [k for k in PLACES if low.strip() in (k, 'il ' + k, 'sul ' + k, 'cartella ' + k)]
+    if only_place:
+        p = os.path.join(HOME, PLACES[only_place[0]])
+        os.makedirs(p, exist_ok=True)
+        return p, ''
+    r = find_files({'testo': 'cartella ' + n, 'tipo': 'cartella'})
+    for x in r.get('results') or []:
+        if x.get('dir'):
+            return x['path'], ''
+    return docs, 'non trovata'
+
+
 # ---------------- trovare i file ----------------
 SKIP = {'.cache', '.local', '.config', '.mozilla', 'node_modules', '__pycache__', '.git', 'snap'}
 
@@ -300,7 +325,7 @@ def make_pdf(a):
             m = re.search(r'^#{1,3}\s+(.+)$', text, re.M)
             title = m.group(1) if m else 'Documento'
         title = re.sub(r'[\\/:*?"<>|\n#]+', ' ', title.replace('**', '')).strip()[:70] or 'Documento'
-        folder = os.path.join(HOME, 'Documenti')
+        folder, _miss = resolve_folder(a.get('cartella') or '')
         os.makedirs(folder, exist_ok=True)
         out = os.path.join(folder, title + '.pdf')
     n, base = 2, out[:-4]

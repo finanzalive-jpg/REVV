@@ -921,6 +921,13 @@ def doc_create(a):
     folder = os.path.join(HOME, 'Documenti')
     if not os.path.isdir(folder) and os.path.isdir(os.path.join(HOME, 'Documents')):
         folder = os.path.join(HOME, 'Documents')
+    missing = ''
+    if a.get('cartella'):                        # "salvalo nella cartella prova sul desktop"
+        try:
+            import riseauto
+            folder, missing = riseauto.resolve_folder(a['cartella'])
+        except Exception:
+            missing = 'non trovata'
     os.makedirs(folder, exist_ok=True)
     path = os.path.join(folder, title + '.docx')
     n = 2
@@ -963,7 +970,9 @@ def doc_create(a):
         z.writestr('word/numbering.xml', _docx_numbering())
         z.writestr('word/document.xml', _docx_xml(text))
     os.replace(tmp, path)
-    return {'ok': True, 'path': path, 'name': os.path.basename(path), 'size': os.path.getsize(path)}
+    where = 'Scrivania (desktop)' if os.path.basename(folder) == 'Scrivania' else os.path.basename(folder)
+    return {'ok': True, 'path': path, 'name': os.path.basename(path), 'size': os.path.getsize(path),
+            'folder': where, 'missing': missing}
 
 
 def _num(v):
@@ -1058,7 +1067,7 @@ def doc_preventivo(a):
     title = 'Preventivo %s' % numero.replace('/', '-')
     if cliente:
         title += ' - ' + cliente.split('\n')[0]
-    r = doc_create({'title': title, 'text': '\n'.join(L)})
+    r = doc_create({'title': title, 'text': '\n'.join(L), 'cartella': a.get('cartella') or ''})
     if r.get('ok'):
         try:
             os.makedirs(os.path.dirname(conf_p), exist_ok=True)
