@@ -480,5 +480,23 @@ def prepare_usb(_=None):
     return risestore.prepare_usb()
 
 
-CMDS = {'ai.prepareUsb': prepare_usb, 'ai.status': status, 'ai.download': download, 'ai.cancel': cancel, 'ai.delete': delete,
+def gpu_mode(a):
+    """Usa la scheda grafica per l'Assistente (più veloce) oppure solo il processore (niente sfarfallio su
+    alcuni portatili Intel). Cambiando si spegne il motore: riparte riaprendo l'Assistente."""
+    flag = os.path.expanduser('~/.config/rise/ai-cpu-only')
+    if 'gpu' in a:
+        if a['gpu']:
+            try:
+                os.remove(flag)
+            except OSError:
+                pass
+        else:
+            os.makedirs(os.path.dirname(flag), exist_ok=True)
+            open(flag, 'w').close()
+        stop({})
+    return {'ok': True, 'gpu': not os.path.exists(flag), 'available': bool(glob_any(['/usr/lib/*/ggml/*/libggml-vulkan*',
+            '/usr/lib/*/ggml/*vulkan*', '/usr/lib/*/libggml-vulkan*', '/usr/lib/*/ggml*/libggml-vulkan*', '/opt/llama/libggml-vulkan*']))}
+
+
+CMDS = {'ai.prepareUsb': prepare_usb, 'ai.gpu': gpu_mode, 'ai.status': status, 'ai.download': download, 'ai.cancel': cancel, 'ai.delete': delete,
         'ai.start': start, 'ai.stop': stop}

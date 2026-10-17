@@ -1330,6 +1330,7 @@ function renderSettings(b,opts){
       const sw=(on,l,d)=>`<button class="switch" role="switch" aria-checked="${!!on}" aria-label="${l}" ${d}></button>`;
       h+=row('ai-figura','Figura sul desktop',`${esc(aiName('f'))} o ${esc(aiName('m'))} in alto a destra: parla quando l’Assistente risponde a voce. Clic per aprire la chat.`,sw(S.figure!==false,'Figura sul desktop','data-fig'));
       h+=row('ai-wake','Attivazione con la voce',`Di’ “Ehi ${esc(aiName('f'))}” o “Ehi ${esc(aiName('m'))}” e ti ascolta, senza toccare niente. Il riconoscimento è sul computer: non si manda niente a nessuno.`,sw(S.wake!==false,'Attivazione con la voce','data-wake')+' <small class="ai-wake-st"></small>');
+      h+=row('ai-gpu','Usa la scheda grafica','L’Assistente risponde più in fretta. Se lo schermo lampeggia mentre pensa, spegnilo: userà solo il processore.',sw(true,'Usa la scheda grafica','data-gpu')+' <small class="ai-gpu-st"></small>');
       h+=row('ai-nomi','Nomi dell’Assistente','Si usano per chiamarli e nel menu della voce.',`<span class="ai-names"><input data-name="f" maxlength="20" value="${esc(aiName('f'))}" aria-label="Nome della voce femminile"> <input data-name="m" maxlength="20" value="${esc(aiName('m'))}" aria-label="Nome della voce maschile"></span>`);
       h+=row('perm-siti','Aprire siti e programmi','“Aprimi YouTube”, “cerca su Amazon…”, “apri Word”.',psw('siti','Siti e programmi'));
       h+=row('perm-file','Creare cartelle, aprire file, fare PDF','“Crea una cartella Clienti sul desktop”, “aprimi il preventivo di Rossi”, “fammi il PDF”.',psw('file','File e cartelle'));
@@ -1366,6 +1367,8 @@ function renderSettings(b,opts){
     if(sec==='assistente'){
       const wakeSync=()=>{if(!NATIVE)return;SYS.call('voice.wake',{enabled:S.wake!==false,names:S.aiNames||{}}).then(r=>{const e=$('.ai-wake-st',main);if(!e||!r)return;e.textContent=!r.available?'Non disponibile: '+(r.why||'?'):S.wake===false?'Spenta':!r.started?'Non partita (riavvia il computer)':r.running?'In ascolto ✓'+(r.log?' · '+r.log:''):'Si sta avviando…'+(r.log?' · '+r.log:'');if(r.available&&S.wake!==false&&!r.running)setTimeout(wakeSync,2500)}).catch(()=>{})};
       wakeSync();
+      {const g=$('[data-gpu]',main);if(g&&NATIVE){SYS.call('ai.gpu').then(r=>{g.setAttribute('aria-checked',String(!!r.gpu));if(!r.available){g.disabled=true;$('.ai-gpu-st',main).textContent='(questo computer usa già solo il processore)'}}).catch(()=>{});
+        g.onclick=()=>{const on=g.getAttribute('aria-checked')!=='true';g.setAttribute('aria-checked',String(on));SYS.call('ai.gpu',{gpu:on}).then(()=>{$('.ai-gpu-st',main).textContent='Fatto: chiudi e riapri l’Assistente.'}).catch(()=>{})}}}
       $$('[data-fig]',main).forEach(x=>x.onclick=()=>{S.figure=S.figure===false;apply();x.setAttribute('aria-checked',String(S.figure!==false))});
       $$('[data-wake]',main).forEach(x=>x.onclick=()=>{S.wake=S.wake===false;apply();x.setAttribute('aria-checked',String(S.wake!==false));wakeSync()});
       $$('[data-name]',main).forEach(x=>x.onchange=()=>{const v=x.value.replace(/[^A-Za-zÀ-ÿ' ]/g,'').trim().slice(0,20);if(!v){x.value=aiName(x.dataset.name);return}
