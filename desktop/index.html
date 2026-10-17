@@ -366,6 +366,7 @@ html[data-role=app] #figure,html[data-role=panel] #figure,html[data-role=popup] 
 .ai-wake-st{display:block;margin-top:4px;color:var(--ink-soft);font-size:.85em;max-width:340px}
 .ai-names input{font:inherit;width:9em;padding:5px 8px;border:1px solid var(--line);border-radius:5px}
 .ai-main{position:relative;flex:1;display:flex;min-height:0}
+.ai-time{align-self:center;font-size:.78em;color:var(--ink-soft);margin-top:-4px}
 .ai-msg.user.heard{display:none}
 .ai-chat.voice .ai-msg.bot:not(.keep){display:none}
 .ai-msg .ai-h{font-size:1.08em}.ai-msg code{background:#eef2f6;padding:0 4px;border-radius:3px}
@@ -1650,14 +1651,14 @@ function renderAssistant(b,opts){
     async function micDown(){if(busy)return;
       if(REC){REC=false;faceState('think');clearTimeout(recT);mic.classList.remove('rec');mic.style.boxShadow='';{const t=$('.ai-toast',b);if(t)t.hidden=true}mic.disabled=true;const note=add('tool',`${DOTS0} Sto capendo cosa hai detto…`);
         let r;try{r=await SYS.call('voice.listenStop')}catch(e){r={ok:false,message:e.message}}note.remove();mic.disabled=false;
-        if(!r.ok){faceState('idle');toast(r.message||'Non ho capito.',true);return}ta.value=r.text;FROMMIC=true;go();return}
+        if(!r.ok){faceState('idle');toast(r.message||'Non ho capito.',true);return}ta.value=r.text;FROMMIC=true;STT_SEC=r.sttSec;go();return}
       let r=await SYS.call('voice.listenStart').catch(e=>({ok:false,message:e.message}));
       if(r.need==='download'){if(!await voiceReady(VOICE))return;r=await SYS.call('voice.listenStart').catch(e=>({ok:false,message:e.message}))}
       if(!r.ok){toast(r.message||'Il microfono non risponde.',true);return}
       REC=true;faceState('listen');mic.classList.add('rec');toast('Ti ascolto… parla pure: quando smetti mi fermo da solo (o clicca di nuovo il microfono).');recT=setTimeout(()=>{if(REC)micDown()},45000);
       const watch=setInterval(async()=>{if(!REC||!b.isConnected){clearInterval(watch);return}let st;try{st=await SYS.call('voice.status')}catch(e){return}
         if(st)mic.style.boxShadow=`0 0 0 ${2+Math.round((st.level||0)*14)}px rgba(216,58,58,.35)`;if(REC&&st&&!st.recording){clearInterval(watch);mic.style.boxShadow='';micDown()}},300)}
-    mic.onclick=micDown;let FROMMIC=false;
+    mic.onclick=micDown;let FROMMIC=false,STT_SEC=null;
     // "Ehi Sara": risponde chi hai chiamato, e ascolta subito la domanda
     wakeFn=()=>{const g=WAKE;WAKE=null;if(!g||!b.isConnected)return;const v=g.wake==='m'?'m':'f';
       if(VOICE!==v){VOICE=v;vsel.value=v;try{localStorage.setItem('rise.ai.voice',v)}catch(e){}faceInit()}
@@ -1852,6 +1853,16 @@ function renderAssistant(b,opts){
         if(L.length===1||(L.length&&/ultim/.test(t))){openFile(L[0]);msgs.push({role:'assistant',content:'Aperto '+L[0].name});speak('Ecco '+L[0].name.replace(/\.[^.]+$/,''));return true}
         if(L.length>1){add('bot',`Ho trovato più file, quale apro? ${L.slice(0,6).map(f=>`<button class="btn" data-openf="${esc(f.path)}">${esc(f.name)}</button>`).join(' ')}`);bindOpenF();speak('Ho trovato più file, quale apro?');return true}
         reply('Non ho trovato file con quel nome. Prova con altre parole del nome.','Non ho trovato file con quel nome.');return true}
+      // "apri youtube e cerca X", "aprimi amazon e cercami X", "vai su google e cerca X": subito, senza il cervello
+      if((m=t.replace(/,/g,'').match(/^(?:apri(?:mi)?|vai su|portami su)\s+(youtube|amazon|google|maps|google maps|wikipedia)\s+(?:e\s+)?(?:poi\s+)?(?:cerca(?:mi)?|metti(?:mi)?|trova(?:mi)?|fammi vedere)\s+(.+)$/))){
+        const k=m[1].replace('google maps','maps'),qq=encodeURIComponent(m[2]);
+        const url={youtube:'https://www.youtube.com/results?search_query='+qq,amazon:'https://www.amazon.it/s?k='+qq,google:'https://www.google.it/search?q='+qq,maps:'https://www.google.com/maps/search/'+qq,wikipedia:'https://it.wikipedia.org/w/index.php?search='+qq}[k];
+        await openUrl(url);reply(`${I('browser',18)} Ho aperto <b>${esc(m[1])}</b> con la ricerca <b>${esc(m[2])}</b>.`,'Ecco '+m[2]+' su '+m[1]+'.');return true}
+      // cartelle: "apri la cartella prova", "aprimi la cartella clienti sul desktop", "apri il desktop"
+      if(P.file&&(m=t.replace(/,/g,'').match(/^apri(?:mi)?\s+(?:la\s+cartella\s+(.+)|(?:il\s+)?(desktop|documenti|download|immagini|musica|video|scrivania))$/))){
+        const r=await SYS.call('auto.find',{testo:'cartella '+(m[1]||m[2]),tipo:'cartella'}).catch(()=>({results:[]}));const f=(r.results||[]).find(x=>x.dir);
+        if(f){openFile(f);reply(`${I('files',18)} Ho aperto la cartella <b>${esc(f.name)}</b>.`,'Ecco la cartella '+f.name+'.');return true}
+        reply('Non trovo una cartella con quel nome.','Non trovo una cartella con quel nome.');return true}
       // YouTube: "cercami su youtube X", "metti su youtube X", "fammi vedere X su youtube"
       if((m=t.match(/^(?:cerca(?:mi)?|metti(?:mi)?|fammi (?:vedere|sentire)|trova(?:mi)?|apri(?:mi)?)\s+(?:su youtube\s+)?(.+?)\s+su youtube$/))||(m=t.match(/^(?:cerca(?:mi)?|metti(?:mi)?|trova(?:mi)?)\s+su youtube\s+(.+)$/))){
         const url='https://www.youtube.com/results?search_query='+encodeURIComponent(m[1]);await openUrl(url);reply(`${I('browser',18)} Ho aperto YouTube con la ricerca <b>${esc(m[1])}</b>.`,'Ecco i video di '+m[1]+' su YouTube.');return true}
@@ -1884,10 +1895,11 @@ function renderAssistant(b,opts){
       if(/^(che ore sono|che ora è|che ora e|dimmi l'ora)/.test(t)){const s='Sono le '+new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})+'.';reply(esc(s),s);return true}
       if(/^(che giorno è|che giorno e|che giorno è oggi|che data è|quanti ne abbiamo)/.test(t)){const s='Oggi è '+new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'.';reply(esc(s),s);return true}
       return false}
-    async function go(){const q=ta.value.trim();if(!q||busy)return;ta.value='';
+    async function go(){const q=ta.value.trim();if(!q||busy)return;ta.value='';const T0=performance.now(),stt=STT_SEC;STT_SEC=null;
+      const timing=()=>{const d=document.createElement('div');d.className='ai-time';d.textContent='⏱ '+(stt!=null?'capito in '+String(stt).replace('.',',')+' s · ':'')+'risposta in '+String(((performance.now()-T0)/1000).toFixed(1)).replace('.',',')+' s';log.appendChild(d);log.scrollTop=log.scrollHeight};
       SYS.call('voice.stop').catch(()=>{});{const u=add('user',esc(q).replace(/\n/g,'<br>'));if(FROMMIC)u.classList.add('heard');FROMMIC=false}msgs.push({role:'user',content:q});faceState('think');
       busy=true;send.textContent='Ferma';
-      try{if(await quick(q)){busy=false;send.textContent='Invia';if(FST==='think')faceState('idle');ta.focus();return}}catch(e){}
+      try{if(await quick(q)){timing();busy=false;send.textContent='Invia';if(FST==='think')faceState('idle');ta.focus();return}}catch(e){}
       let tick=null,out=null,spokenUpTo=0;
       try{for(let round=0;round<8;round++){
         const DOTS='<span class="ai-dots"><i></i><i></i><i></i></span>';out=add('bot',DOTS+' <small class="ai-phase">Sto leggendo la tua richiesta… <span class="ai-sec">0 s</span></small>');let text='',think='',calls={},t0=performance.now(),first=false;
@@ -1923,7 +1935,7 @@ function renderAssistant(b,opts){
           msgs.push({role:'assistant',content:done});add('bot',esc(done));speak(done);break}}
       }catch(e){if(e.name==='AbortError'){if(out&&$('.ai-dots',out))out.innerHTML='<small class="ai-phase">Interrotto.</small>'}else add('bot','<span class="err">Non riesco a parlare con l’Assistente. Riprova tra poco.</span>')}
       clearInterval(tick);
-      busy=false;ctrl=null;send.textContent='Invia';if(FST==='think')faceState('idle');ta.focus()}
+      timing();busy=false;ctrl=null;send.textContent='Invia';if(FST==='think')faceState('idle');ta.focus()}
     ta.focus()}
   boot();
   return g=>{if(g&&g.wake){WAKE=g;if(wakeFn)wakeFn()}};
