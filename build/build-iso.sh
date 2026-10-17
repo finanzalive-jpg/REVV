@@ -146,12 +146,13 @@ rm -rf /tmp/piper-dl
 
 log "4/9 Desktop di Rise (offline: caratteri e lettori di file inclusi)"
 D="$CH/opt/rise"; mkdir -p "$D/fonts" "$D/lib"
-NPM="$WORK/npm"; mkdir -p "$NPM"
+NPM="$WORK/npm"
 # NPM_CACHE: cartella con i pacchetti già scaricati (facoltativa, accelera le prove locali)
-[ -n "${NPM_CACHE:-}" ] && [ -d "$NPM_CACHE" ] && cp "$NPM_CACHE"/*.tgz "$NPM/" 2>/dev/null || true
-( cd "$NPM" && for p in @fontsource/onest@5 @fontsource/unbounded@5 @fontsource/jetbrains-mono@5 @fontsource/source-serif-4@5 pdfjs-dist@3.11.174 mammoth@1.6.0 xlsx@0.18.5; do n="$(echo "$p" | sed 's/^@//; s/\//-/; s/@.*//')"; ls "$n"-*.tgz >/dev/null 2>&1 || npm pack -q "$p" >/dev/null; done
-  for f in *.tgz; do mkdir -p "x/${f%.tgz}"; tar xzf "$f" -C "x/${f%.tgz}"; done )
+"$ROOT/build/npm-libs.sh" "$NPM"
 "$ROOT/build/install-system.sh" "$CH" "$NPM/x"
+# versione installata: serve agli aggiornamenti dal web per sapere se c'è qualcosa di nuovo
+BUILD_ID="$(git -C "$ROOT" log -1 --format=%ct 2>/dev/null || date +%s)"
+printf '{"build": %s, "version": "%s", "commit": "%s"}\n' "$BUILD_ID" "$VERSION" "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo ?)" > "$CH/etc/rise-build"
 
 log "5/9 Configurazione di sistema"
 for d in Documenti Immagini Musica Download Video Scrivania; do mkdir -p "$CH/etc/skel/$d"; done

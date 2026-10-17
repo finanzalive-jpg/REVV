@@ -365,6 +365,7 @@ select{height:34px;border-radius:4px;border:1px solid #8fa9b8;padding:0 10px;fon
 html[data-role=app] #figure,html[data-role=panel] #figure,html[data-role=popup] #figure{display:none}
 .ai-wake-st{display:block;margin-top:4px;color:var(--ink-soft);font-size:.85em;max-width:340px}
 .ai-gpu{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:5px}
+#upd-box .ok{color:#1d7a3a}#upd-box .err{color:#b3261e}#upd-box .btn{margin:4px 6px 0 0}#upd-box ul{margin:6px 0 6px 18px;font-size:.92em}
 .ai-names input{font:inherit;width:9em;padding:5px 8px;border:1px solid var(--line);border-radius:5px}
 .ai-main{position:relative;flex:1;display:flex;min-height:0}
 .ai-time{align-self:center;font-size:.78em;color:var(--ink-soft);margin-top:-4px}
@@ -654,6 +655,29 @@ async function netRefresh(scan){if(!NATIVE)return;
   renderTrayNet();refreshSettings('rete',true);if(!$('#quick').hidden)openQuick();
   if(scan&&LIVE.net&&LIVE.net.wifiDevice&&LIVE.net.wifiOn&&!LIVE.scanning){LIVE.scanning=true;refreshSettings('rete',true);
     try{LIVE.nets=await SYS.call('net.scan')}catch(e){}LIVE.scanning=false;refreshSettings('rete',true)}}
+// ---- aggiornamenti dal web
+async function updBox(main,force){const box=$('#upd-box',main);if(!box)return;
+  const fmt=v=>esc(String(v||'').replace(/^0\.5-dev\./,'sviluppo '));
+  let st=null;try{st=(await SYS.call('update.status')).status}catch(e){}
+  if(st&&st.running){box.innerHTML=`<p><b>${esc(st.message||'Aggiorno…')}</b></p><div class="meter"><i style="width:${st.pct||3}%"></i></div><p class="note">Puoi continuare a lavorare. Alla fine ti dico di riavviare.</p>`;setTimeout(()=>{if(box.isConnected)updBox(main,false)},1200);return}
+  let r;try{r=await SYS.call('update.check',{force})}catch(e){r={ok:false,message:'Non riesco a controllare.'}}
+  const cur=r.current||{},done=st&&st.done&&st.restart&&st.version&&(!r.latest||st.version===r.latest.version)&&Date.now()/1000-(st.time||0)<86400;
+  let h=`<p>Versione installata: <b>${fmt(cur.version)}</b></p>`;
+  if(st&&st.phase==='error'&&Date.now()/1000-(st.time||0)<3600)h+=`<p class="err">${esc(st.message)}</p>`;
+  if(done)h+=`<p class="ok"><b>${esc(st.message)}</b></p><button class="btn primary" data-reboot>Riavvia adesso</button>`;
+  else if(!r.ok)h+=`<p class="note">${esc(r.message||'Non riesco a controllare: serve internet.')}</p><button class="btn" data-recheck>Controlla di nuovo</button>`;
+  else if(r.available){const L=r.latest;h+=`<p><b>È disponibile la versione ${fmt(L.version)}</b> (${Math.max(1,Math.round((L.size||0)/1048576))} MB)</p>
+    ${(L.notes||[]).length?`<details><summary>Cosa cambia</summary><ul>${L.notes.slice(0,10).map(n=>`<li>${esc(n)}</li>`).join('')}</ul></details>`:''}
+    ${r.live?'<p class="note">Stai usando Rise dalla chiavetta: l’aggiornamento vale fino allo spegnimento. Sul computer installato resta per sempre.</p>':''}
+    <button class="btn primary" data-upd>Aggiorna</button>`}
+  else h+=`<p class="ok">✓ Rise è aggiornato.</p><button class="btn" data-recheck>Controlla di nuovo</button>`;
+  if(st&&st.phase==='done'&&!done&&/precedente/.test(st.message||''))h+=`<p class="note">${esc(st.message)}</p>`;
+  h+=` <button class="btn" data-rollback title="Se dopo un aggiornamento qualcosa non va">Torna alla versione precedente</button>`;
+  box.innerHTML=h;
+  const b=$('[data-upd]',box);if(b)b.onclick=async()=>{b.disabled=true;const x=await SYS.call('update.apply').catch(e=>({ok:false,message:e.message}));if(!x.ok){box.insertAdjacentHTML('beforeend',`<p class="err">${esc(x.message)}</p>`);return}setTimeout(()=>updBox(main,false),800)};
+  const c=$('[data-recheck]',box);if(c)c.onclick=()=>{box.innerHTML='<p class="note">Controllo…</p>';updBox(main,true)};
+  const rb=$('[data-reboot]',box);if(rb)rb.onclick=()=>SYS.call('power',{action:'reboot'}).catch(()=>{});
+  const ro=$('[data-rollback]',box);if(ro)ro.onclick=async()=>{if(ro.dataset.sure!=='1'){ro.dataset.sure='1';ro.textContent='Sicuro? Torna indietro';return}ro.disabled=true;const x=await SYS.call('update.rollback').catch(()=>({ok:false}));box.insertAdjacentHTML('beforeend',`<p class="${x.ok?'ok':'err'}">${x.ok?'Fatto: riavvia il computer.':'Non ci sono riuscito'+(x.message?': '+esc(x.message):'.')}</p>`)}}
 function apply(){
   $('#screen').style.filter=S.bright<100&&!(NATIVE&&LIVE.backlight)?`brightness(${S.bright/100})`:'';
   document.documentElement.style.setProperty('--ui',{s:'13px',m:'14.5px',l:'16.5px'}[S.text]);
@@ -684,7 +708,8 @@ const SECTIONS=[
  {id:'aspetto',label:'Aspetto',ic:'look',lead:'Colori ed effetti delle finestre.'},
  {id:'condivisione',label:'Condivisione',ic:'network',lead:'Rise Drop per scambiare file con telefoni e PC vicini, e le cartelle che condividi in rete.'},
  {id:'assistente',label:'Assistente',ic:'assistant',lead:'Cosa può fare l’Assistente per te e il tuo account email per inviare preventivi e documenti.'},
- {id:'sistema',label:'Sistema e hardware',ic:'system',lead:'Cosa sta usando il computer e se ogni componente funziona, in parole semplici.'}
+ {id:'sistema',label:'Sistema e hardware',ic:'system',lead:'Cosa sta usando il computer e se ogni componente funziona, in parole semplici.'},
+ {id:'aggiornamenti',label:'Aggiornamenti',ic:'system',lead:'Le novità di Rise arrivano da internet: niente chiavetta e niente reinstallazione. I tuoi file e le tue impostazioni restano come sono.'}
 ];
 const SETS=[
  {id:'bright',sec:'schermo',label:'Luminosità',desc:'Quanto è chiaro lo schermo',k:'luminosita luce chiaro scuro schermo'},
@@ -697,6 +722,7 @@ const SETS=[
  {id:'vol',sec:'suono',label:'Volume',desc:'Quanto è alto l\'audio',k:'volume audio suono alto basso muto'},
  {id:'out',sec:'suono',label:'Uscita audio',desc:'Altoparlanti o cuffie',k:'cuffie altoparlanti casse bluetooth uscita'},
  {id:'accent',sec:'aspetto',label:'Colore principale',desc:'Il colore di pulsanti e selezioni',k:'colore tema accento personalizza'},
+ {id:'upd',sec:'aggiornamenti',label:'Aggiornamenti di Rise',desc:'Controlla e installa la versione nuova',k:'aggiorna aggiornamento versione novità nuova update'},
  {id:'perm',sec:'assistente',label:'Permessi dell’Assistente',desc:'Siti, file e cartelle, email',k:'assistente permessi autorizzazioni email posta gmail rubrica contatti'},
  {id:'mail',sec:'assistente',label:'Account email',desc:'Per inviare preventivi e documenti',k:'email posta gmail outlook thunderbird account password invio'},
  {id:'wall',sec:'aspetto',label:'Sfondo',desc:'L’immagine del desktop',k:'sfondo desktop foto immagine wallpaper'},
@@ -776,7 +802,10 @@ function renderTasks(){
 $('#peek').onclick=()=>{if(MW){const act=TOPS.some(x=>!x.minimized);TOPS.forEach(x=>SYS.call('top.action',{action:act?'minimize':'activate',id:x.id}));return}const vis=Object.keys(W).filter(k=>!W[k].min);if(vis.length)vis.forEach(k=>{W[k].el.hidden=true;W[k].min=true});TOP=null;renderTasks()};
 
 /* ================= Desktop ================= */
-setTimeout(()=>{renderDesk();loadDeskFiles()},0);setTimeout(()=>{initFigure();if(NATIVE&&(ROLE==='desktop'||ROLE==='full'))SYS.call('voice.wake',{enabled:S.wake!==false,names:S.aiNames||{}}).catch(()=>{})},0);setInterval(()=>{if(ROLE!=='app'&&document.visibilityState==='visible')loadDeskFiles()},8000);
+setTimeout(()=>{renderDesk();loadDeskFiles()},0);setTimeout(()=>{if(NATIVE&&(ROLE==='desktop'||ROLE==='full')){const chk=async()=>{if(S.updAuto===false)return;let last=0;try{last=+localStorage.getItem('rise.updCheck')||0}catch(e){}
+  if(Date.now()-last<20*3600*1000)return;try{localStorage.setItem('rise.updCheck',String(Date.now()))}catch(e){}
+  const r=await SYS.call('update.check',{force:true}).catch(()=>null);if(r&&r.available&&window.__riseToast)window.__riseToast('C’è una versione nuova di Rise: Impostazioni → Aggiornamenti.')};
+  setTimeout(chk,60000);setInterval(chk,3600*1000)}},0);setTimeout(()=>{initFigure();if(NATIVE&&(ROLE==='desktop'||ROLE==='full'))SYS.call('voice.wake',{enabled:S.wake!==false,names:S.aiNames||{}}).catch(()=>{})},0);setInterval(()=>{if(ROLE!=='app'&&document.visibilityState==='visible')loadDeskFiles()},8000);
 $('#screen').addEventListener('contextmenu',e=>{if(e.target.closest('.win'))return;e.preventDefault();deskMenu(e.clientX,e.clientY)});
 
 /* ================= Menu Start ================= */
@@ -1347,6 +1376,8 @@ function renderSettings(b,opts){
       h+=`</div><div class="st-label" style="padding:18px 2px 0" data-id="shares">Cartelle condivise in rete</div><div class="hw" id="sh-list"><p class="note">${NATIVE?'Carico…':'Disponibile sul PC.'}</p></div><p class="note">Per condividere una cartella aprila in Esplora file e premi “Condividi”.</p><div>`;
     }
     if(sec==='sistema')h+=row('kbd','Tastiera','La disposizione dei tasti del tuo computer. Se premendo un tasto esce un simbolo diverso da quello disegnato, cambiala qui.',`<select id="s-kbd" aria-label="Tastiera">${Object.entries(KBD_NAMES).map(([k,v])=>`<option value="${k}"${(S.kbd||'it')===k?' selected':''}>${v}</option>`).join('')}</select>`);
+    if(sec==='aggiornamenti')h+=`</div><div class="mbox" id="upd-box" data-id="upd"><p class="note">${NATIVE?'Controllo se c’è una versione nuova…':'Disponibile sul PC.'}</p></div>
+      <div class="row" data-id="upd-auto"><div class="txt"><b>Controlla da solo</b><small>Una volta al giorno Rise guarda se c’è una versione nuova e te lo dice. Non installa niente senza il tuo “Aggiorna”.</small></div><div class="ctl"><button class="switch" role="switch" aria-checked="${S.updAuto!==false}" aria-label="Controlla da solo" data-updauto></button></div></div><div>`;
     if(sec==='sistema'&&NATIVE){h+=`</div><div id="sysinfo"><p class="lead">Leggo le informazioni del computer…</p></div><div>`}
     else if(sec==='sistema'){
       h+=`</div><dl class="kv" data-id="info">
@@ -1367,6 +1398,9 @@ function renderSettings(b,opts){
     main.innerHTML=h+'</div>';main.scrollTop=y;bind();
     if(sec==='sistema'&&NATIVE)fillSys();
     if(sec==='condivisione'&&NATIVE)fillShare();
+    if(sec==='aggiornamenti'){
+      $$('[data-updauto]',main).forEach(x=>x.onclick=()=>{S.updAuto=S.updAuto===false;apply();x.setAttribute('aria-checked',String(S.updAuto!==false))});
+      if(NATIVE)updBox(main,false)}
     if(sec==='assistente'){
       const wakeSync=()=>{if(!NATIVE)return;SYS.call('voice.wake',{enabled:S.wake!==false,names:S.aiNames||{}}).then(r=>{const e=$('.ai-wake-st',main);if(!e||!r)return;e.textContent=!r.available?'Non disponibile: '+(r.why||'?'):S.wake===false?'Spenta':!r.started?'Non partita (riavvia il computer)':r.running?'In ascolto ✓'+(r.log?' · '+r.log:''):'Si sta avviando…'+(r.log?' · '+r.log:'');if(r.available&&S.wake!==false&&!r.running)setTimeout(wakeSync,2500)}).catch(()=>{})};
       wakeSync();

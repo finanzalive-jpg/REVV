@@ -9,6 +9,7 @@ for f in "$ROOT"/system/bin/*; do [ -f "$f" ] && install -m 755 "$f" "$CH/usr/lo
 rm -rf "$CH/usr/local/lib/rise"; cp -r "$ROOT/system/lib/rise" "$CH/usr/local/lib/rise"
 find "$CH/usr/local/lib/rise" -name __pycache__ -prune -exec rm -rf {} +
 cp -r "$ROOT/system/etc/." "$CH/etc/"
+chmod 440 "$CH/etc/sudoers.d/rise" 2>/dev/null || true; chown root:root "$CH/etc/sudoers.d/rise" 2>/dev/null || true
 cp -r "$ROOT/system/share/themes/." "$CH/usr/share/themes/"
 install -d "$CH/usr/share/plymouth/themes"
 cp -r "$ROOT/system/share/plymouth/themes/." "$CH/usr/share/plymouth/themes/"
