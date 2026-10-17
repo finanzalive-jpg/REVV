@@ -276,3 +276,32 @@ def fx(a):
 
 
 CMDS.update({'web.wiki': wiki, 'web.fx': fx})
+
+
+LANGS = {'inglese': 'en', 'francese': 'fr', 'spagnolo': 'es', 'tedesco': 'de', 'portoghese': 'pt', 'russo': 'ru',
+         'cinese': 'zh-CN', 'giapponese': 'ja', 'arabo': 'ar', 'rumeno': 'ro', 'polacco': 'pl', 'olandese': 'nl',
+         'greco': 'el', 'albanese': 'sq', 'ucraino': 'uk', 'turco': 'tr', 'italiano': 'it', 'coreano': 'ko',
+         'svedese': 'sv', 'croato': 'hr', 'serbo': 'sr', 'ungherese': 'hu', 'ceco': 'cs', 'hindi': 'hi'}
+
+
+def translate(a):
+    """Traduzione veloce di parole e frasi brevi (MyMemory, gratis e senza account)."""
+    import json
+    text = (a.get('testo') or '').strip()
+    to = LANGS.get((a.get('a') or 'inglese').lower(), (a.get('a') or 'en'))
+    src = LANGS.get((a.get('da') or '').lower(), '') or ('en' if to == 'it' else 'it')
+    if not text or len(text) > 450:
+        return {'ok': False}
+    try:
+        page, _, _ = _get('https://api.mymemory.translated.net/get?' + urllib.parse.urlencode(
+            {'q': text, 'langpair': '%s|%s' % (src, to)}), timeout=8)
+        d = json.loads(page)
+        out = html.unescape((d.get('responseData') or {}).get('translatedText') or '')
+    except Exception as e:
+        return {'ok': False, 'message': str(e)}
+    if not out or 'MYMEMORY WARNING' in out.upper() or out.strip().lower() == text.lower() and src != to:
+        return {'ok': False}
+    return {'ok': True, 'text': out, 'to': to, 'from': src}
+
+
+CMDS.update({'web.translate': translate})

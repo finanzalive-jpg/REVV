@@ -50,11 +50,35 @@ def _place(where):
 
 
 # ---------------- cartelle ----------------
+_PLACE_RE = r'(?:sul|sulla|sui|nel|nella|nei|nelle|in|dentro(?:\s+(?:a|al|alla))?)\s+(?:mio\s+|mia\s+|miei\s+|il\s+|la\s+)?'
+
+
+def _split_place(text):
+    """"prova sul mio desktop" -> ("prova", Scrivania); "fatture dentro la cartella clienti" -> ("fatture", …/clienti)."""
+    t = (text or '').strip().rstrip('.!?')
+    m = re.search(r'\s*\b(?:dentro|nella|nel|in)\s+(?:la\s+)?cartella\s+(.+)$', t, re.I)
+    if m:
+        base, miss = resolve_folder(m.group(1))
+        if not miss:
+            return t[:m.start()].strip(), base
+    for k, v in PLACES.items():
+        m = re.search(r'\s*\b' + _PLACE_RE + k + r'\b', t, re.I) or re.search(r'^\s*' + _PLACE_RE + k + r'\b\s*', t, re.I)
+        if m:
+            return (t[:m.start()] + ' ' + t[m.end():]).strip(), (os.path.join(HOME, v) if v else HOME)
+    return t, None
+
+
 def make_folder(a):
-    name = re.sub(r'[\\/:*?"<>|]+', ' ', (a.get('nome') or a.get('name') or '').strip())[:80].strip()
+    raw = (a.get('nome') or a.get('name') or a.get('testo') or '').strip()
+    raw, base = _split_place(raw)
+    raw = re.sub(r'^(?:una\s+)?(?:nuova\s+)?cartella\s+', '', raw, flags=re.I)
+    raw = re.sub(r'^(?:chiamata|di nome|con nome|con il nome|nominata)\s+', '', raw, flags=re.I).strip(' "“”\'')
+    name = re.sub(r'[\\/:*?"<>|]+', ' ', raw)[:80].strip()
     if not name:
         return {'ok': False, 'message': 'Come la chiamo?'}
-    base = _place(a.get('dove') or a.get('where'))
+    if not base:
+        d = a.get('dove') or a.get('where') or ''
+        base = resolve_folder(d)[0] if d and not any(k in _norm(d) for k in PLACES) else _place(d)
     os.makedirs(base, exist_ok=True)
     path = os.path.join(base, name)
     existed = os.path.isdir(path)
@@ -160,6 +184,69 @@ def find_files(a):
     if latest:
         found = found[:1]
     return {'ok': True, 'results': found[:8]}
+
+
+# ---------------- rinominare ed eliminare ----------------
+PROTECTED = {'Documenti', 'Scrivania', 'Download', 'Immagini', 'Musica', 'Video', 'Desktop', 'Documents', 'Pictures'}
+
+
+def _candidates(text, kind=''):
+    """File o cartelle col nome indicato: prima quelli col nome identico."""
+    want_dir = 'cartell' in _norm(kind)
+    want_file = 'file' in _norm(kind) or 'document' in _norm(kind)
+    q = (('cartella ' if want_dir else '') + (text or '')).strip()
+    res = find_files({'testo': q, 'tipo': 'cartella' if want_dir else ''}).get('results') or []
+    if want_file:
+        res = [r for r in res if not r.get('dir')]
+    res = [r for r in res if not (r.get('dir') and os.path.basename(r['path']) in PROTECTED
+                                  and os.path.dirname(r['path']) == HOME) and r['path'] != HOME]
+    words = _norm(re.sub(r'\b(cartell\w*|file|documento|il|la|lo)\b', ' ', text or '')).split()
+    exact = [r for r in res if _norm(os.path.splitext(r['name'])[0] if not r.get('dir') else r['name']) == ' '.join(words)]
+    return exact or res
+
+
+def rename(a):
+    """Rinomina un file o una cartella trovata per nome (stessa cartella; l'estensione dei file resta)."""
+    new = re.sub(r'[\\/:*?"<>|]+', ' ', (a.get('nuovo') or a.get('new') or '').strip().strip('"“”\'')).strip()
+    if not new:
+        return {'ok': False, 'message': 'Come lo devo chiamare?'}
+    if a.get('path'):
+        c = [{'path': a['path'], 'name': os.path.basename(a['path']), 'dir': os.path.isdir(a['path'])}]
+    else:
+        c = _candidates(a.get('testo') or a.get('nome') or '', a.get('tipo') or '')
+    if not c:
+        return {'ok': False, 'message': 'Non trovo niente con quel nome.'}
+    if len(c) > 1 and not a.get('path'):
+        return {'ok': False, 'choose': c[:6], 'message': 'Ho trovato più cose con quel nome: quale?'}
+    src = c[0]['path']
+    if os.path.basename(src) in PROTECTED and os.path.dirname(src) == HOME:
+        return {'ok': False, 'message': 'Questa cartella del sistema non si rinomina.'}
+    if not os.path.isdir(src) and not os.path.splitext(new)[1]:
+        new += os.path.splitext(src)[1]
+    dst = os.path.join(os.path.dirname(src), new)
+    if os.path.exists(dst):
+        return {'ok': False, 'message': 'Esiste già “%s” in quella cartella.' % new}
+    os.rename(src, dst)
+    return {'ok': True, 'path': dst, 'old': os.path.basename(src), 'name': new, 'dir': os.path.isdir(dst),
+            'folder': os.path.basename(os.path.dirname(dst))}
+
+
+def find_for_delete(a):
+    c = _candidates(a.get('testo') or a.get('nome') or '', a.get('tipo') or '')
+    return {'ok': bool(c), 'results': c[:6], 'message': '' if c else 'Non trovo niente con quel nome.'}
+
+
+def trash(a):
+    """Sposta nel Cestino (si può recuperare): mai le cartelle principali."""
+    done, bad = [], []
+    for p in a.get('paths') or []:
+        p = os.path.abspath(os.path.expanduser(p))
+        if not p.startswith(HOME + os.sep) or (os.path.dirname(p) == HOME and os.path.basename(p) in PROTECTED):
+            bad.append(os.path.basename(p))
+            continue
+        r = subprocess.run(['gio', 'trash', '--', p], capture_output=True, text=True)
+        (done if r.returncode == 0 else bad).append(os.path.basename(p))
+    return {'ok': not bad, 'done': done, 'failed': bad}
 
 
 # ---------------- PDF ----------------
@@ -453,6 +540,9 @@ def mail_send(a):
     msg['From'] = ('%s <%s>' % (c['name'], c['email'])) if c.get('name') else c['email']
     msg['To'] = to
     msg['Subject'] = a.get('oggetto') or a.get('subject') or ''
+    if a.get('in_reply_to'):                       # risposta: resta nella stessa conversazione
+        msg['In-Reply-To'] = a['in_reply_to']
+        msg['References'] = ((a.get('refs') or '') + ' ' + a['in_reply_to']).strip()
     msg.set_content(a.get('testo') or a.get('body') or '')
     for p in a.get('allegati') or []:
         p = os.path.expanduser(p)
@@ -511,7 +601,7 @@ def mail_thunderbird(a):
     return {'ok': True}
 
 
-CMDS = {'auto.mkdir': make_folder, 'auto.find': find_files, 'auto.pdf': make_pdf,
+CMDS = {'auto.rename': rename, 'auto.findDelete': find_for_delete, 'auto.trash': trash, 'auto.mkdir': make_folder, 'auto.find': find_files, 'auto.pdf': make_pdf,
         'contacts.list': contacts, 'contacts.save': contact_save, 'contacts.delete': contact_delete,
         'mail.get': mail_get, 'mail.set': mail_set, 'mail.send': mail_send, 'mail.test': mail_test,
         'mail.prepare': mail_prepare, 'mail.thunderbird': mail_thunderbird}
@@ -634,7 +724,8 @@ def mail_read(a):
         text, atts = _plain(msg)
         name, addr = email.utils.parseaddr(_dec(msg.get('From')))
         return {'ok': True, 'from': name or addr, 'addr': addr, 'subject': _dec(msg.get('Subject')), 'date': msg.get('Date', ''),
-                'text': text[:6000], 'attachments': atts}
+                'text': text[:6000], 'attachments': atts, 'msgid': msg.get('Message-ID', ''),
+                'refs': msg.get('References', '')}
     finally:
         try:
             m.logout()
