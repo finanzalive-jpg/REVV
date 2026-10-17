@@ -57,6 +57,13 @@ chroot "$CH" apt-get update -qq
 # shellcheck disable=SC2046
 chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat "$ROOT/build/packages.txt")
 
+log "3a0/9 Pacchetti facoltativi (stampanti, archivi, Bluetooth)"
+for pkg in $(grep -v '^#' "$ROOT/build/packages-optional.txt"); do
+  chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "$pkg" >/dev/null 2>&1 \
+    && echo "  $pkg: ok" || echo "  ATTENZIONE: $pkg non disponibile"
+done
+chroot "$CH" systemctl enable cups cups-browsed >/dev/null 2>&1 || true
+
 log "3a/9 Installatore: avvio con Secure Boot e dual boot con Windows (GRUB firmato, shim, os-prober)"
 # grub-install non deve partire adesso (siamo nella cartella di costruzione): lo si disattiva e poi lo si rimette
 chroot "$CH" dpkg-divert --local --rename --add /usr/sbin/grub-install >/dev/null

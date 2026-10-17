@@ -374,6 +374,16 @@ html[data-role=app] #figure,html[data-role=panel] #figure,html[data-role=popup] 
 .ileg{display:flex;gap:14px;font-size:.8em;color:var(--ink-soft)}.ileg span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .iopt{display:block;margin:6px 0;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer}.iform{display:grid;gap:10px;max-width:440px}.iform label{display:grid;gap:3px;font-size:.92em}
 .iform input:not([type=checkbox]){font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:5px}.ichk{display:flex!important;gap:8px;align-items:flex-start;grid-template-columns:none}.inst .err{color:#b3261e}.meter.big{height:14px}
+.mm{position:fixed;inset:0;z-index:9000}.mm .fx-dlg{max-width:460px}.mm-in{width:100%;font:inherit;padding:7px 9px;border:1px solid var(--line);border-radius:5px;box-sizing:border-box}.pd-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:6px 0}.pd-row select,.pd-row input{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:5px;min-width:200px}.pd-msg .ok,.bt-list .ok{color:#1d7a3a}.pd-msg .err,.bt-list .err{color:#b3261e}
+.prn{display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}.prn-t{flex:1;display:grid}.prn-t .tag{justify-self:start;margin:2px 0}.bt-list{display:grid;gap:6px}.bt-list .dd-dev{width:100%;box-sizing:border-box}.prn-t small{color:var(--ink-soft)}.prn-a{display:flex;gap:6px;flex-wrap:wrap}.prn-ip{margin-top:10px}.prn-ipin{max-width:220px}.prn-msg .ok{color:#1d7a3a}.prn-msg .err,#prn-box .err{color:#b3261e}
+.nt{display:flex;flex-direction:column;height:100%}.nt-tabs{display:flex;gap:4px;padding:8px 12px 0;border-bottom:1px solid var(--line);background:#fff}.nt-tabs button{all:unset;cursor:pointer;padding:8px 14px;border-radius:6px 6px 0 0;color:var(--ink-soft)}.nt-tabs button.on{background:var(--bg,#f4f7fa);color:var(--ink);font-weight:600;box-shadow:0 -2px 0 var(--accent) inset}
+.nt-body{flex:1;overflow:auto;padding:14px 18px}.rd-wrap{display:flex;gap:20px;align-items:center;flex-wrap:wrap}.rd{width:220px;height:220px;flex:none}.rd svg{width:100%;height:100%}
+.rd-sweep{transform-origin:100px 100px;animation:rdspin 2.2s linear infinite}.rd-sweep.slow{animation-duration:5s}@keyframes rdspin{to{transform:rotate(360deg)}}.rd-dot{cursor:pointer;animation:rdblip 1.6s ease-in-out infinite}@keyframes rdblip{50%{opacity:.45}}
+.rd-side{flex:1;min-width:220px}.rd-title{font-size:1.1em}.rd-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:14px}
+.rd-dev{all:unset;cursor:pointer;display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:#fff}.rd-dev:hover{border-color:var(--accent)}.rd-ic{font-size:24px}.rd-t{display:grid;gap:2px;min-width:0}.rd-t small{color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis}
+.rd-ports{display:flex;flex-wrap:wrap;gap:4px;margin-top:3px}.rd-ports i{font-style:normal;font-size:.75em;background:#eef4fb;border-radius:9px;padding:1px 7px;color:#2a5a8a}
+.pg-in{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.pg-in .mm-in{flex:1;min-width:200px;width:auto}.pg-in select{font:inherit;padding:6px;border:1px solid var(--line);border-radius:5px}.pg-quick{margin:8px 0;font-size:.9em;color:var(--ink-soft);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pg-v{font-size:1.25em;color:#1d7a3a;margin:12px 0 6px}.pg-v.bad,.pg-out .err{color:#b3261e}.pg-bars{display:flex;gap:4px;align-items:flex-end;height:74px;padding:4px 0;border-bottom:1px solid var(--line)}.pg-bars span{width:18px;background:#3ddc97;border-radius:3px 3px 0 0}.pg-bars span.mid{background:#ffd166}.pg-bars span.slow{background:#ff7b72}
 .ai-names input{font:inherit;width:9em;padding:5px 8px;border:1px solid var(--line);border-radius:5px}
 .ai-main{position:relative;flex:1;display:flex;min-height:0}
 .ai-time{align-self:center;font-size:.78em;color:var(--ink-soft);margin-top:-4px}
@@ -663,6 +673,23 @@ async function netRefresh(scan){if(!NATIVE)return;
   renderTrayNet();refreshSettings('rete',true);if(!$('#quick').hidden)openQuick();
   if(scan&&LIVE.net&&LIVE.net.wifiDevice&&LIVE.net.wifiOn&&!LIVE.scanning){LIVE.scanning=true;refreshSettings('rete',true);
     try{LIVE.nets=await SYS.call('net.scan')}catch(e){}LIVE.scanning=false;refreshSettings('rete',true)}}
+// ---- stampanti
+async function prnBox(main){const box=$('#prn-box',main);if(!box)return;
+  const st=await SYS.call('print.list').catch(e=>({ok:false,message:e.message}));
+  if(!st.ok){box.innerHTML=`<p class="err">${esc(st.message)}</p>`;return}
+  let h=st.printers.length?`<div class="prn-list">${st.printers.map(p=>`<div class="prn"><span style="font-size:26px">🖨️</span><span class="prn-t"><b>${esc(p.name.replace(/_/g,' '))}</b>${p.default?' <span class="tag">Predefinita</span>':''}<small>${esc(p.model||'')}${p.how?' · '+esc(p.how):''} · ${esc(p.state)}</small></span>
+      <span class="prn-a">${p.default?'':`<button class="btn" data-def="${esc(p.name)}">Usa di solito</button>`}<button class="btn" data-test="${esc(p.name)}">Pagina di prova</button><button class="btn" data-rm="${esc(p.name)}">Togli</button></span></div>`).join('')}</div>`
+    :'<p>Non c’è ancora nessuna stampante.</p>';
+  h+=`<div class="prn-found"><p class="note">Cerco altre stampanti in rete e sulla USB…</p></div>
+    <details class="prn-ip"><summary>Aggiungi con l’indirizzo IP</summary><p class="note">L’indirizzo si legge di solito sul display della stampante o nella pagina di configurazione (es. 192.168.1.50).</p><input class="mm-in prn-ipin" placeholder="192.168.1.50"> <button class="btn primary" data-addip>Aggiungi</button></details><p class="prn-msg"></p>`;
+  box.innerHTML=h;const msg=t=>$('.prn-msg',box).innerHTML=t;
+  $$('[data-def]',box).forEach(b=>b.onclick=async()=>{await SYS.call('print.default',{name:b.dataset.def});prnBox(main)});
+  $$('[data-test]',box).forEach(b=>b.onclick=async()=>{const r=await SYS.call('print.test',{name:b.dataset.test});msg(r.ok?'<span class="ok">Pagina di prova inviata.</span>':`<span class="err">${esc(r.message||'Non partita.')}</span>`)});
+  $$('[data-rm]',box).forEach(b=>b.onclick=async()=>{if(b.dataset.sure!=='1'){b.dataset.sure='1';b.textContent='Sicuro?';return}await SYS.call('print.remove',{name:b.dataset.rm});prnBox(main)});
+  $('[data-addip]',box).onclick=async()=>{const ip=$('.prn-ipin',box).value.trim();if(!ip)return;msg('Collego la stampante… (fino a un minuto)');const r=await SYS.call('print.add',{ip}).catch(e=>({ok:false,message:e.message}));if(r.ok)prnBox(main);else msg(`<span class="err">${esc(r.message)}</span>`)};
+  const f=await SYS.call('print.discover').catch(()=>({found:[]}));const F=$('.prn-found',box);if(!F)return;
+  F.innerHTML=(f.found||[]).length?`<p><b>Trovate:</b></p>${f.found.map((x,i)=>`<div class="prn"><span style="font-size:22px">🖨️</span><span class="prn-t"><b>${esc(x.label)}</b><small>${esc(x.how)}</small></span><span class="prn-a"><button class="btn primary" data-add="${i}">Aggiungi</button></span></div>`).join('')}`:'<p class="note">Nessun’altra stampante trovata. Se la tua non compare, accendila e collegala alla stessa rete Wi‑Fi, oppure aggiungila con l’indirizzo IP.</p>';
+  $$('[data-add]',F).forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Collego…';const x=f.found[+b.dataset.add];const r=await SYS.call('print.add',{uri:x.uri,name:x.label}).catch(e=>({ok:false,message:e.message}));if(r.ok)prnBox(main);else{b.disabled=false;b.textContent='Aggiungi';msg(`<span class="err">${esc(r.message)}</span>`)}})}
 // ---- aggiornamenti dal web
 async function updBox(main,force){const box=$('#upd-box',main);if(!box)return;
   const fmt=v=>esc(String(v||'').replace(/^0\.5-dev\./,'sviluppo '));
@@ -702,6 +729,7 @@ const APPS={
  viewer:{name:'Visualizzatore',ic:'viewer',desc:'Apre foto, video, musica, PDF, Word, Excel e testo',w:800,h:560,render:renderViewer},
  notes:{name:'Note',ic:'notes',desc:'Scrivi appunti veloci, si salvano da soli',w:480,h:420,render:renderNotes},
  assistant:{name:'Assistente',ic:'assistant',desc:'Fai domande, scrivi lettere e preventivi, apri programmi. Senza internet',w:760,h:580,render:renderAssistant},
+ nettools:{name:'Rete',ic:'radar',desc:'Radar dei dispositivi collegati, ping e test della connessione',w:820,h:600,render:renderNetTools},
  installer:{name:'Installa Rise',ic:'install',desc:'Installa Rise sul computer accanto a Windows, senza toccarlo',w:780,h:600,render:renderInstaller},
  store:{name:'Negozio',ic:'store',desc:'Installa programmi: Chrome, Spotify, Zoom, giochi e migliaia di altri',w:900,h:620,render:renderStore},
  calc:{name:'Calcolatrice',ic:'calc',fit:1,desc:'Somme, percentuali e conti al volo',w:300,h:440,render:renderCalc},
@@ -718,6 +746,7 @@ const SECTIONS=[
  {id:'condivisione',label:'Condivisione',ic:'network',lead:'Rise Drop per scambiare file con telefoni e PC vicini, e le cartelle che condividi in rete.'},
  {id:'assistente',label:'Assistente',ic:'assistant',lead:'Cosa può fare l’Assistente per te e il tuo account email per inviare preventivi e documenti.'},
  {id:'sistema',label:'Sistema e hardware',ic:'system',lead:'Cosa sta usando il computer e se ogni componente funziona, in parole semplici.'},
+ {id:'stampanti',label:'Stampanti',ic:'system',lead:'Le stampanti di rete e quelle collegate col cavo USB compaiono da sole. Qui scegli quella che usi di solito e aggiungi le altre.'},
  {id:'aggiornamenti',label:'Aggiornamenti',ic:'system',lead:'Le novità di Rise arrivano da internet: niente chiavetta e niente reinstallazione. I tuoi file e le tue impostazioni restano come sono.'}
 ];
 const SETS=[
@@ -731,6 +760,7 @@ const SETS=[
  {id:'vol',sec:'suono',label:'Volume',desc:'Quanto è alto l\'audio',k:'volume audio suono alto basso muto'},
  {id:'out',sec:'suono',label:'Uscita audio',desc:'Altoparlanti o cuffie',k:'cuffie altoparlanti casse bluetooth uscita'},
  {id:'accent',sec:'aspetto',label:'Colore principale',desc:'Il colore di pulsanti e selezioni',k:'colore tema accento personalizza'},
+ {id:'printers',sec:'stampanti',label:'Stampanti',desc:'Aggiungi una stampante, scegli quella predefinita, stampa una pagina di prova',k:'stampante stampanti stampare stampa printer cups hp epson canon brother'},
  {id:'upd',sec:'aggiornamenti',label:'Aggiornamenti di Rise',desc:'Controlla e installa la versione nuova',k:'aggiorna aggiornamento versione novità nuova update'},
  {id:'perm',sec:'assistente',label:'Permessi dell’Assistente',desc:'Siti, file e cartelle, email',k:'assistente permessi autorizzazioni email posta gmail rubrica contatti'},
  {id:'mail',sec:'assistente',label:'Account email',desc:'Per inviare preventivi e documenti',k:'email posta gmail outlook thunderbird account password invio'},
@@ -974,7 +1004,12 @@ function renderFiles(b,opts){
       <button class="btn" data-t="rename" ${one?'':'disabled'} title="Rinomina (F2)">Rinomina</button>
       <button class="btn" data-t="trash" ${any?'':'disabled'} title="Sposta nel cestino (Canc)">Elimina</button>
       <span class="fx-sep"></span>
+      <button class="btn" data-t="zip" ${any?'':'disabled'} title="Crea un file .zip">Comprimi</button>
+      ${one&&!selDir&&/\.(zip|rar|7z|tar|tgz|gz|bz2|xz)$/i.test((ITEMS[[...SEL][0]]||{}).name||'')?'<button class="btn" data-t="unzip" title="Estrai qui">Estrai</button>':''}
+      ${one&&!selDir?'<button class="btn" data-t="print" title="Stampa">🖨️ Stampa</button>':''}
+      <span class="fx-sep"></span>
       <button class="btn drop" data-t="drop" ${any&&!selDir?'':'disabled'} title="Invia ai dispositivi vicini">${I('net',16)}Rise Drop</button>
+      <button class="btn" data-t="bt" ${any&&!selDir?'':'disabled'} title="Invia a un telefono via Bluetooth">ᛒ Bluetooth</button>
       <button class="btn" data-t="share" ${(!any||selDir)&&DIR?'':'disabled'} title="Condividi in rete">Condividi</button>
       <span class="fx-info">${any?SEL.size+(SEL.size===1?' selezionato':' selezionati'):''}</span></div>`}
   function paintSel(){$$('tbody tr[data-i]',list).forEach(tr=>tr.classList.toggle('sel',SEL.has(+tr.dataset.i)));const t=$('.fx-tools',list);if(t){const k=t.dataset.kind;t.outerHTML=tools(k);bindTools(k)}}
@@ -993,6 +1028,12 @@ function renderFiles(b,opts){
       if(t==='empty'){if(!$('.fx-confirm',list)){const d=document.createElement('div');d.className='fx-confirm';d.innerHTML=`<span>Eliminare per sempre tutto quello che c'è nel cestino?</span><button class="btn" data-n>Annulla</button><button class="btn danger" data-y>Svuota</button>`;$('.fx-tools',list).after(d);
           $('[data-n]',d).onclick=()=>d.remove();$('[data-y]',d).onclick=async()=>{await SYS.call('fs.trashEmpty');showNative(cur)}}return}
       if(t==='drop'){dropDialog(paths);return}
+      if(t==='bt'){btSendDialog(paths);return}
+      if(t==='zip'){toast('Comprimo…');r=await SYS.call('arch.compress',{paths});if(!r.ok)toast(r.message,true);else toast(`Fatto: ${r.name} (${r.files} file).`);showNative(cur);return}
+      if(t==='unzip'){toast('Estraggo…');r=await SYS.call('arch.extract',{path:paths[0]});
+        if(!r.ok&&r.need==='password'){const pw=await askText('Questo archivio ha una password:','',true);if(!pw)return;r=await SYS.call('arch.extract',{path:paths[0],password:pw})}
+        if(!r.ok)toast(r.message,true);else toast(`Fatto: ${r.files} file nella cartella “${r.name}”.`);showNative(cur);return}
+      if(t==='print'){printDialog(paths[0]);return}
       if(t==='share'){shareDialog(paths.length?paths[0]:DIR);return}
     }catch(e){toast('Operazione non riuscita: '+e.message,true)}
   }
@@ -1004,8 +1045,8 @@ function renderFiles(b,opts){
   function modal(html){let m=$('.fx-modal',b);if(m)m.remove();m=document.createElement('div');m.className='fx-modal';m.innerHTML=`<div class="fx-dlg">${html}</div>`;b.appendChild(m);m.onclick=e=>{if(e.target===m)m.remove()};return m}
   async function dropDialog(paths){
     const m=modal(`<h3>${I('net',26)}Invia con Rise Drop</h3><p class="lead">${paths.length===1?esc(paths[0].split('/').pop()):paths.length+' file'} → scegli un dispositivo vicino.</p><div class="dd-list"><p class="fx-info">Cerco i dispositivi sulla tua rete…</p></div>
-      <p class="note">Si vedono i PC con Rise e telefoni, tablet e PC con l'app gratuita <b>LocalSend</b> aperta, sulla stessa rete Wi‑Fi o via cavo.</p><div class="dd-foot"><button class="btn" data-x>Chiudi</button></div>`);
-    $('[data-x]',m).onclick=()=>m.remove();
+      <p class="note">Si vedono i PC con Rise e telefoni, tablet e PC con l'app gratuita <b>LocalSend</b> aperta, sulla stessa rete Wi‑Fi o via cavo.</p><div class="dd-foot"><button class="btn" data-bt>ᛒ Usa il Bluetooth</button><button class="btn" data-x>Chiudi</button></div>`);
+    $('[data-x]',m).onclick=()=>m.remove();$('[data-bt]',m).onclick=()=>{m.remove();btSendDialog(paths)};
     const paint=devs=>{const L=$('.dd-list',m);if(!L)return;if(!devs.length){L.innerHTML='<p class="fx-info">Nessun dispositivo trovato per ora. Apri LocalSend sull\'altro dispositivo: compare qui da solo.</p>';return}
       L.innerHTML=devs.map((d,i)=>`<button class="dd-dev" data-i="${i}">${I(d.type==='mobile'?'hw-cam':'computer',30)}<span><b>${esc(d.alias)}</b><small>${esc(d.model||d.type)} · ${esc(d.ip)}</small></span></button>`).join('');
       $$('.dd-dev',L).forEach(x=>x.onclick=()=>{const d=devs[+x.dataset.i];L.innerHTML=`<div class="dd-prog"><b>Aspetto che ${esc(d.alias)} accetti…</b><div class="meter"><i style="width:0%"></i></div></div>`;
@@ -1148,7 +1189,7 @@ function parseCSV(t){const first=t.split('\n')[0];const d=first.includes('\t')?'
     else if(c==='"')qq=true;else if(c===d){row.push(cell);cell=''}else if(c==='\n'){row.push(cell);rows.push(row);row=[];cell=''}else if(c!=='\r')cell+=c}
   if(cell||row.length){row.push(cell);rows.push(row)}return rows}
 function renderViewer(b,opts){
-  b.innerHTML=`<div class="vw"><div class="vw-bar"><span class="vw-ic">${I('viewer',22)}</span><span class="vw-name">Nessun file aperto</span><span class="vw-meta"></span><span class="vw-pdf" hidden><button class="btn" data-act="fill" title="Scrivi sul modulo, aggiungi la firma">✍️ Compila e firma</button> <button class="btn" data-act="edit" title="Cambia testi e immagini">Modifica</button></span><button class="btn" data-act="open">Apri un file…</button></div><div class="vw-body"></div></div>`;
+  b.innerHTML=`<div class="vw"><div class="vw-bar"><span class="vw-ic">${I('viewer',22)}</span><span class="vw-name">Nessun file aperto</span><span class="vw-meta"></span><span class="vw-pdf" hidden><button class="btn" data-act="fill" title="Scrivi sul modulo, aggiungi la firma">✍️ Compila e firma</button> <button class="btn" data-act="edit" title="Cambia testi e immagini">Modifica</button></span><button class="btn" data-act="print" hidden title="Stampa">🖨️ Stampa</button><button class="btn" data-act="open">Apri un file…</button></div><div class="vw-body"></div></div>`;
   $('[data-act="fill"]',b).onclick=()=>SRCPATH&&SYS.call('native.open',{id:'pdffill',path:SRCPATH}).then(r=>{if(r&&r.ok===false&&window.__riseToast)window.__riseToast(r.message||'Programma non installato')});
   $('[data-act="edit"]',b).onclick=()=>SRCPATH&&SYS.call('native.open',{id:/\.pdf$/i.test(SRCPATH)?'draw':'writer',path:SRCPATH}).then(r=>{if(r&&r.ok===false&&window.__riseToast)window.__riseToast(r.message||'Programma non installato')});
   const body=$('.vw-body',b),title=()=>b.closest('.win')&&$('.tb-title',b.closest('.win'));
@@ -1161,6 +1202,7 @@ function renderViewer(b,opts){
   let SRCPATH=null;
   async function load(f){
     const my=++tok;clean();const k=kindOf(f.name);SRCPATH=f.native?f.path:null;
+    $('[data-act="print"]',b).hidden=!(NATIVE&&SRCPATH);$('[data-act="print"]',b).onclick=()=>SRCPATH&&printDialog(SRCPATH);
     {const pb=$('.vw-pdf',b);pb.hidden=!(NATIVE&&SRCPATH&&/\.(pdf|docx?|odt|rtf)$/i.test(f.name));$('[data-act="fill"]',b).hidden=!/\.pdf$/i.test(f.name)}
     if(f.native){$('.vw-ic',b).innerHTML=fileIcon(f.name,22);$('.vw-name',b).textContent=f.name;msg(`<p>Apro il file…</p>`);
       try{f=await nativeFile(f)}catch(e){if(my===tok)msg(`<b>${esc(f.name)}</b><p>${esc(e.message)}</p>`);return}if(my!==tok)return}
@@ -1210,6 +1252,83 @@ function renderViewer(b,opts){
   if(opts&&opts.goto)load(opts.goto);else emptyState();
   return load;
 }
+
+/* ================= Rete: radar dei dispositivi e ping ================= */
+ICO.radar='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="#0d3b2e"/><g fill="none" stroke="#3ddc97" stroke-width="2" opacity=".55"><circle cx="32" cy="32" r="20"/><circle cx="32" cy="32" r="11"/><path d="M32 4v56M4 32h56"/></g><path d="M32 32L32 4A28 28 0 0 1 56 18z" fill="#3ddc97" opacity=".45"/><circle cx="44" cy="20" r="3.5" fill="#b8ffda"/><circle cx="20" cy="40" r="3" fill="#b8ffda"/></svg>');
+function renderNetTools(b,opts){
+  b.innerHTML=`<div class="nt"><div class="nt-tabs"><button class="on" data-tab="radar">📡 Radar della rete</button><button data-tab="ping">📶 Ping e test</button></div><div class="nt-body"></div></div>`;
+  const body=$('.nt-body',b);let DEV=[],ME=null;
+  const KI={'questo computer':'💻','router (internet)':'🌐','computer':'🖥️','stampante':'🖨️','telefono / tablet':'📱','TV / multimediale':'📺','videocamera':'📷','NAS (archivio di rete)':'🗄️','dispositivo con pagina web':'🔌','dispositivo':'🔹'};
+  const tab=t=>{$$('.nt-tabs button',b).forEach(x=>x.classList.toggle('on',x.dataset.tab===t));t==='radar'?radar():pingView()};
+  $$('.nt-tabs button',b).forEach(x=>x.onclick=()=>tab(x.dataset.tab));
+  async function radar(){body.innerHTML=`<div class="rd-wrap"><div class="rd"><svg viewBox="0 0 200 200"><defs><radialGradient id="rdg"><stop offset="0" stop-color="#0f4d3b"/><stop offset="1" stop-color="#062019"/></radialGradient>
+      <linearGradient id="rds" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3ddc97" stop-opacity="0"/><stop offset="1" stop-color="#3ddc97" stop-opacity=".55"/></linearGradient></defs>
+      <circle cx="100" cy="100" r="96" fill="url(#rdg)"/><g fill="none" stroke="#3ddc97" stroke-opacity=".3"><circle cx="100" cy="100" r="64"/><circle cx="100" cy="100" r="32"/><path d="M100 4v192M4 100h192"/></g>
+      <g class="rd-sweep"><path d="M100 100 L196 100 A96 96 0 0 0 167.9 32.1 Z" fill="url(#rds)"/></g><g class="rd-dots"></g><circle cx="100" cy="100" r="4" fill="#b8ffda"/></svg></div>
+      <div class="rd-side"><b class="rd-title">Cerco i dispositivi collegati alla tua rete…</b><p class="note">Ci vogliono pochi secondi. Rise guarda solo la tua rete locale (casa o ufficio).</p><button class="btn" data-rescan disabled>Cerca di nuovo</button></div></div><div class="rd-list"></div>`;
+    $('[data-rescan]',body).onclick=radar;
+    const r=await SYS.call('net.radar').catch(e=>({ok:false,message:e.message}));if(!body.isConnected)return;
+    $('.rd-sweep',body).classList.add('slow');$('[data-rescan]',body).disabled=false;
+    if(!r.ok){$('.rd-title',body).textContent=r.message||'Non riesco a guardare la rete.';return}
+    DEV=r.devices;ME=r.me;$('.rd-title',body).textContent=`${DEV.length} dispositivi sulla rete ${r.network}`;$('.note',body).textContent=`Trovati in ${String(r.seconds).replace('.',',')} secondi. Clicca un dispositivo per fare un ping o vedere cosa offre.`;
+    $('.rd-dots',body).innerHTML=DEV.map((d,i)=>{const last=+d.ip.split('.').pop(),ang=(last*137.5)%360*Math.PI/180,rad=d.kind==='questo computer'?0:d.kind.startsWith('router')?24:40+((last*7)%52);
+      return `<g class="rd-dot" data-i="${i}" style="animation-delay:${(i*80)%1600}ms"><circle cx="${100+rad*Math.cos(ang)}" cy="${100+rad*Math.sin(ang)}" r="${d.kind==='questo computer'?0:5}" fill="${d.kind==='stampante'?'#ffd166':d.kind.startsWith('router')?'#7cc4ff':d.kind.startsWith('telefono')?'#ff9fd2':'#b8ffda'}"><title>${esc(d.name||d.ip)}</title></circle></g>`}).join('');
+    $('.rd-list',body).innerHTML=DEV.map((d,i)=>`<button class="rd-dev" data-i="${i}"><span class="rd-ic">${KI[d.kind]||'🔹'}</span><span class="rd-t"><b>${esc(d.name||d.host||d.ip)}</b><small>${esc(d.kind)} · ${esc(d.ip)}${d.vendor?' · '+esc(d.vendor):''}</small>
+      ${d.ports.length?`<span class="rd-ports">${d.ports.map(p=>`<i>${esc(p.what)}</i>`).join('')}</span>`:''}</span></button>`).join('');
+    $$('.rd-dev,.rd-dot',body).forEach(x=>x.onclick=()=>{const d=DEV[+x.dataset.i];pingView(d.ip,d)})}
+  function pingView(host,dev){tab0('ping');body.innerHTML=`<div class="pg"><div class="pg-in"><input class="mm-in pg-h" placeholder="es. google.it, 192.168.1.1" value="${esc(host||'')}"><select class="pg-n"><option>4</option><option>10</option><option>20</option></select>
+      <button class="btn primary" data-ping>Ping</button><button class="btn" data-ports>Porte aperte</button><button class="btn" data-dns>Indirizzo (DNS)</button></div>
+      <div class="pg-quick">Prove veloci: <button class="btn" data-q="gw">Il mio router</button><button class="btn" data-q="google.it">google.it</button><button class="btn" data-q="1.1.1.1">Internet (1.1.1.1)</button></div>
+      ${dev?`<p class="note">${KI[dev.kind]||''} <b>${esc(dev.name||dev.ip)}</b> · ${esc(dev.kind)}${dev.vendor?' · '+esc(dev.vendor):''}${dev.mac?' · '+esc(dev.mac):''}</p>`:''}<div class="pg-out"></div></div>`;
+    const H=()=>$('.pg-h',body).value.trim(),O=$('.pg-out',body);
+    $$('[data-q]',body).forEach(x=>x.onclick=async()=>{let h=x.dataset.q;if(h==='gw'){const r=(DEV.find(d=>d.kind.startsWith('router'))||{}).ip;h=r||(await SYS.call('net.radar').then(r=>r.gateway).catch(()=>''))||'192.168.1.1'}$('.pg-h',body).value=h;$('[data-ping]',body).click()});
+    $('[data-ping]',body).onclick=async()=>{if(!H())return;const n=+$('.pg-n',body).value;O.innerHTML=`<p class="fx-info">Ping a ${esc(H())} (${n} volte)…</p>`;
+      const r=await SYS.call('net.ping',{host:H(),count:n}).catch(e=>({ok:false,message:e.message}));const mx=Math.max(50,...(r.times||[0]));
+      O.innerHTML=`<p class="pg-v ${r.ok?'':'bad'}"><b>${esc(r.verdict||'Non raggiungibile')}</b> ${r.ip&&r.ip!==H()?`<small>(${esc(r.ip)})</small>`:''}</p>
+        ${r.ok?`<p>Risposte: <b>${r.received} su ${r.sent}</b> · tempo medio <b>${String(r.avg).replace('.',',')} ms</b> (min ${r.min}, max ${r.max})</p><div class="pg-bars">${r.times.map(t=>`<span title="${t} ms" style="height:${Math.max(4,t/mx*70)}px" class="${t>150?'slow':t>60?'mid':''}"></span>`).join('')}</div>
+          <p class="note">Sotto i 40 ms è ottimo, fino a 100 va bene, oltre è lento. Se alcune risposte mancano la connessione perde colpi.</p>`:`<p class="err">${esc(r.message||'Nessuna risposta: il dispositivo è spento, non è in rete o blocca il ping.')}</p>`}`};
+    $('[data-ports]',body).onclick=async()=>{if(!H())return;O.innerHTML='<p class="fx-info">Controllo le porte più comuni…</p>';const r=await SYS.call('net.ports',{host:H()}).catch(e=>({ok:false,message:e.message}));
+      O.innerHTML=r.ok?(r.open.length?`<p><b>${esc(r.host)}</b> (${esc(r.ip)}) offre:</p><ul>${r.open.map(p=>`<li><b>${p.port}</b> · ${esc(p.what)}</li>`).join('')}</ul>`:`<p>Nessuna delle porte comuni è aperta su ${esc(r.ip)}.</p>`):`<p class="err">${esc(r.message)}</p>`};
+    $('[data-dns]',body).onclick=async()=>{if(!H())return;const r=await SYS.call('net.dns',{host:H()}).catch(e=>({ok:false,message:e.message}));O.innerHTML=r.ok?`<p><b>${esc(r.host)}</b> → ${r.ips.map(esc).join(', ')}</p>`:`<p class="err">${esc(r.message)}</p>`};
+    $('.pg-h',body).onkeydown=e=>{if(e.key==='Enter')$('[data-ping]',body).click()};if(host)$('[data-ping]',body).click()}
+  const tab0=t=>$$('.nt-tabs button',b).forEach(x=>x.classList.toggle('on',x.dataset.tab===t));
+  if(!NATIVE){body.innerHTML='<p class="note">Disponibile sul PC con Rise.</p>';return}
+  if(opts&&opts.goto&&opts.goto.ping)pingView(opts.goto.ping);else radar();
+  return g=>{if(g&&g.ping)pingView(g.ping);else radar()}}
+
+/* ================= Stampa e Bluetooth (finestre comuni) ================= */
+function miniModal(html){const m=document.createElement('div');m.className='fx-modal mm';m.innerHTML=`<div class="fx-dlg">${html}</div>`;document.body.appendChild(m);m.onclick=e=>{if(e.target===m)m.remove()};return m}
+function askText(label,val='',secret=false){return new Promise(res=>{const m=miniModal(`<p>${esc(label)}</p><input class="mm-in" type="${secret?'password':'text'}" value="${esc(val)}"><div class="dd-foot"><button class="btn" data-n>Annulla</button><button class="btn primary" data-y>OK</button></div>`);
+  const i=$('.mm-in',m);i.focus();const end=v=>{m.remove();res(v)};$('[data-y]',m).onclick=()=>end(i.value);$('[data-n]',m).onclick=()=>end(null);i.onkeydown=e=>{if(e.key==='Enter')end(i.value);if(e.key==='Escape')end(null)}})}
+async function printDialog(path){const name=path.split('/').pop();const m=miniModal(`<h3>🖨️ Stampa</h3><p class="lead">${esc(name)}</p><div class="pd-body"><p class="fx-info">Cerco le stampanti…</p></div>`);
+  const st=await SYS.call('print.list').catch(e=>({ok:false,message:e.message}));const B=$('.pd-body',m);
+  if(!st.ok||!st.printers.length){B.innerHTML=`<p>${esc(st.message||'Non c’è ancora nessuna stampante.')}</p><div class="dd-foot"><button class="btn" data-x>Chiudi</button><button class="btn primary" data-set>Aggiungi una stampante</button></div>`;
+    $('[data-x]',B).onclick=()=>m.remove();$('[data-set]',B).onclick=()=>{m.remove();openApp('settings',{goto:'printers'})};return}
+  B.innerHTML=`<label class="pd-row">Stampante <select class="pd-p">${st.printers.map(p=>`<option${p.default?' selected':''} value="${esc(p.name)}">${esc(p.name.replace(/_/g,' '))}${p.state!=='pronta'?' ('+esc(p.state)+')':''}</option>`).join('')}</select></label>
+    <label class="pd-row">Copie <input class="pd-n" type="number" min="1" max="99" value="1"></label><label class="pd-row">Pagine <input class="pd-pg" placeholder="tutte (oppure es. 1-3,5)"></label>
+    <label class="ichk"><input type="checkbox" class="pd-bw"> In bianco e nero</label><label class="ichk"><input type="checkbox" class="pd-dx"> Fronte e retro</label>
+    <p class="pd-msg"></p><div class="dd-foot"><button class="btn" data-x>Annulla</button><button class="btn primary" data-go>Stampa</button></div>`;
+  $('[data-x]',B).onclick=()=>m.remove();$('[data-go]',B).onclick=async()=>{const g=$('[data-go]',B);g.disabled=true;$('.pd-msg',B).textContent='Invio alla stampante…';
+    const r=await SYS.call('print.file',{path,printer:$('.pd-p',B).value,copies:+$('.pd-n',B).value||1,pages:$('.pd-pg',B).value.trim(),bw:$('.pd-bw',B).checked,duplex:$('.pd-dx',B).checked}).catch(e=>({ok:false,message:e.message}));
+    if(r.ok){$('.pd-msg',B).innerHTML='<span class="ok">✓ Inviato alla stampante.</span>';setTimeout(()=>m.remove(),1500)}else{$('.pd-msg',B).innerHTML=`<span class="err">${esc(r.message)}</span>`;g.disabled=false}}}
+async function btSendDialog(paths){const files=paths.filter(p=>!/\/$/.test(p));const m=miniModal(`<h3>ᛒ Invia via Bluetooth</h3><p class="lead">${files.length===1?esc(files[0].split('/').pop()):files.length+' file'} → scegli il telefono o il computer.</p>
+    <div class="bt-list"><p class="fx-info">Accendo il Bluetooth e cerco i dispositivi vicini (10 secondi)…</p></div><p class="note">Sul telefono: Bluetooth acceso e visibile. Quando arriva il file, tocca <b>Accetta</b>.</p><div class="dd-foot"><button class="btn" data-again>Cerca di nuovo</button><button class="btn" data-x>Chiudi</button></div>`);
+  $('[data-x]',m).onclick=()=>m.remove();const L=$('.bt-list',m);
+  const st=await SYS.call('bt.status').catch(()=>({ok:false}));if(!st.ok){L.innerHTML=`<p class="err">${esc(st.message||'Bluetooth non disponibile.')}</p>`;return}
+  const icon=k=>k==='telefono'?'📱':k==='computer'?'💻':k.startsWith('cuffie')?'🎧':'ᛒ';
+  const paint=r=>{const D=(r.devices||[]).filter(d=>!/cuffie|stampante/.test(d.kind));if(!D.length){L.innerHTML='<p class="fx-info">Non vedo dispositivi. Controlla che il Bluetooth del telefono sia acceso e visibile, poi premi “Cerca di nuovo”.</p>';return}
+    L.innerHTML=D.map((d,i)=>`<button class="dd-dev" data-i="${i}"><span style="font-size:24px">${icon(d.kind)}</span><span><b>${esc(d.name)}</b><small>${esc(d.kind)}${d.paired?' · associato':''}</small></span></button>`).join('');
+    $$('.dd-dev',L).forEach(b=>b.onclick=async()=>{const d=D[+b.dataset.i];
+      if(!d.paired){L.innerHTML=`<p>Associo <b>${esc(d.name)}</b>… <b>sul telefono conferma la richiesta</b> (stesso codice).</p>`;const p=await SYS.call('bt.pair',{mac:d.mac}).catch(e=>({ok:false,message:e.message}));
+        if(!p.ok){L.innerHTML=`<p class="err">${esc(p.message)}</p>`;return}}
+      L.innerHTML=`<p>Invio a <b>${esc(d.name)}</b>…</p><div class="meter"><i style="width:3%"></i></div><p class="bt-msg fx-info">Mi collego…</p>`;
+      const s=await SYS.call('bt.send',{mac:d.mac,paths:files}).catch(e=>({ok:false,message:e.message}));if(!s.ok){L.innerHTML=`<p class="err">${esc(s.message)}</p>`;return}
+      const iv=setInterval(async()=>{if(!m.isConnected){clearInterval(iv);return}const j=(await SYS.call('bt.job',{job:s.job}).catch(()=>({job:{}}))).job||{};
+        const bar=$('.meter i',L);if(bar)bar.style.width=(j.pct||3)+'%';const t=$('.bt-msg',L);if(t)t.textContent=(j.files>1?`File ${j.index||1} di ${j.files}: `:'')+(j.msg||'');
+        if(j.done){clearInterval(iv);L.innerHTML=j.ok?`<p class="ok">✓ Inviato a ${esc(d.name)}.</p>`:`<p class="err">${esc(j.msg)}</p>`}},800)})};
+  const scan=async()=>{L.innerHTML='<p class="fx-info">Cerco i dispositivi vicini (10 secondi)…</p>';const known=await SYS.call('bt.devices').catch(()=>({devices:[]}));if((known.devices||[]).length)paint(known);
+    paint(await SYS.call('bt.devices',{scan:10}).catch(()=>({devices:[]})))};
+  $('[data-again]',m).onclick=scan;scan()}
 
 /* ================= Installa Rise (accanto a Windows) ================= */
 ICO.install='data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fb4ff"/><stop offset="1" stop-color="#1f5fd1"/></linearGradient></defs><rect x="8" y="34" width="48" height="20" rx="4" fill="#5b6b7d"/><rect x="8" y="34" width="48" height="8" rx="4" fill="#7d8ea1"/><circle cx="48" cy="46" r="2.5" fill="#7dff9a"/><path d="M32 6v24" stroke="url(#g)" stroke-width="7" stroke-linecap="round"/><path d="M21 21l11 11 11-11" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg>');
@@ -1452,6 +1571,7 @@ function renderSettings(b,opts){
       h+=`</div><div class="st-label" style="padding:18px 2px 0" data-id="shares">Cartelle condivise in rete</div><div class="hw" id="sh-list"><p class="note">${NATIVE?'Carico…':'Disponibile sul PC.'}</p></div><p class="note">Per condividere una cartella aprila in Esplora file e premi “Condividi”.</p><div>`;
     }
     if(sec==='sistema')h+=row('kbd','Tastiera','La disposizione dei tasti del tuo computer. Se premendo un tasto esce un simbolo diverso da quello disegnato, cambiala qui.',`<select id="s-kbd" aria-label="Tastiera">${Object.entries(KBD_NAMES).map(([k,v])=>`<option value="${k}"${(S.kbd||'it')===k?' selected':''}>${v}</option>`).join('')}</select>`);
+    if(sec==='stampanti')h+=`</div><div class="mbox" id="prn-box" data-id="printers"><p class="note">${NATIVE?'Cerco le stampanti…':'Disponibile sul PC.'}</p></div><div>`;
     if(sec==='aggiornamenti')h+=`</div><div class="mbox" id="upd-box" data-id="upd"><p class="note">${NATIVE?'Controllo se c’è una versione nuova…':'Disponibile sul PC.'}</p></div>
       <div class="row" data-id="upd-auto"><div class="txt"><b>Controlla da solo</b><small>Una volta al giorno Rise guarda se c’è una versione nuova e te lo dice. Non installa niente senza il tuo “Aggiorna”.</small></div><div class="ctl"><button class="switch" role="switch" aria-checked="${S.updAuto!==false}" aria-label="Controlla da solo" data-updauto></button></div></div><div>`;
     if(sec==='sistema'&&NATIVE){h+=`</div><div id="sysinfo"><p class="lead">Leggo le informazioni del computer…</p></div><div>`}
@@ -1474,6 +1594,7 @@ function renderSettings(b,opts){
     main.innerHTML=h+'</div>';main.scrollTop=y;bind();
     if(sec==='sistema'&&NATIVE)fillSys();
     if(sec==='condivisione'&&NATIVE)fillShare();
+    if(sec==='stampanti'&&NATIVE)prnBox(main);
     if(sec==='aggiornamenti'){
       $$('[data-updauto]',main).forEach(x=>x.onclick=()=>{S.updAuto=S.updAuto===false;apply();x.setAttribute('aria-checked',String(S.updAuto!==false))});
       if(NATIVE)updBox(main,false)}
@@ -1948,7 +2069,7 @@ function renderAssistant(b,opts){
         reply(`${I('browser',18)} Notizie da <b>${esc(r.source)}</b>:<br>${L.map(i=>`• ${i.link?`<a href="#" data-url="${esc(i.link)}">${esc(i.title)}</a>`:esc(i.title)}`).join('<br>')}`,'Ecco le notizie da '+r.source+'. '+L.slice(0,4).map(i=>i.title).join('. ')+'.');
         $$('[data-url]',log).forEach(a=>a.onclick=e=>{e.preventDefault();openUrl(a.dataset.url)});return true}
       // Rise Drop: "manda il preventivo al telefono", "manda questo file al telefono"
-      if(P.file&&(m=t.match(/^(?:manda|invia|passa)(?:mi)?\s+(.*?)\s*(?:al|sul)\s+(telefono|cellulare|tablet|pc|computer)(?:\s+(?:di\s+)?(.+))?$/))){await sendToPhone(m[1].replace(/^(il|la|lo|l'|questo|questa|quel)\s*/,''),m[3]||'');return true}
+      if(P.file&&!/bluetooth/.test(t)&&(m=t.match(/^(?:manda|invia|passa)(?:mi)?\s+(.*?)\s*(?:al|sul)\s+(telefono|cellulare|tablet|pc|computer)(?:\s+(?:di\s+)?(.+))?$/))){await sendToPhone(m[1].replace(/^(il|la|lo|l'|questo|questa|quel)\s*/,''),m[3]||'');return true}
       // Wi-Fi e Bluetooth
       if((m=t.match(/^(accendi|attiva|spegni|disattiva)\s+(?:il\s+)?(wi-?fi|wireless|bluetooth)$/))){await netAct(/blue/.test(m[2])?'bluetooth':'wifi',/accendi|attiva/.test(m[1])?'accendi':'spegni','');return true}
       if((m=q.trim().replace(/[?!.]+$/,'').match(/^(?:collegati|connettiti|collega(?:mi)?)\s+(?:al|alla)\s+(?:wi-?fi|rete)\s+(?:di\s+|chiamat[ao]\s+)?(.+)$/i))){await netAct('wifi','collega',m[1]);return true}
@@ -2162,6 +2283,24 @@ function renderAssistant(b,opts){
         if(!L.length){reply('Non trovo niente con quel nome.','Non trovo niente con quel nome.');return true}
         const box=add('bot',`Ho trovato: <div class="md-act">${L.map((c,i)=>`<button class="btn" data-ix="${i}">${c.dir?'📁':'📄'} ${esc(c.name)} <small>(${esc(c.folder)})</small></button>`).join(' ')}</div><small>Clicca per aprire.</small>`);
         $$('[data-ix]',box).forEach(b=>b.onclick=()=>openFile(L[+b.dataset.ix]));speak(L.length===1?'L’ho trovato in '+L[0].folder.replace('~/','').replace('Scrivania','sul desktop')+'.':'Ne ho trovati '+L.length+'.');return true}
+      // archivi: "comprimi la cartella progetto", "estrai il file fatture.zip"
+      if(P.file&&(m=u.match(/^(?:comprimi|zippa|fai (?:uno |un )?zip (?:di|della|del))\s+(?:la\s+cartella|il\s+file|i\s+file|la)?\s*(.+)$/))){const r=await SYS.call('arch.compress',{testo:m[1],tipo:/cartella/.test(u)?'cartella':''});
+        reply(r.ok?`${I('folder',18)} Fatto: <b>${esc(r.name)}</b> in ${esc(r.folder)} (${r.files} file).`:esc(r.message),r.ok?'Fatto, ho creato '+r.name.replace(/\.zip$/,'')+' punto zip.':r.message);return true}
+      if(P.file&&(m=u.match(/^(?:estrai|scompatta|decomprimi|apri l archivio|unzippa)\s+(?:il\s+file|l archivio|lo zip|il)?\s*(.+)$/))){const r=await SYS.call('arch.extract',{testo:m[1]});
+        if(r.ok){reply(`${I('folder',18)} Estratti ${r.files} file nella cartella <b>${esc(r.name)}</b>.`,'Fatto, ho estratto '+r.files+' file.');openApp('files',{goto:'fs:'+r.path})}else reply(esc(r.message),r.message);return true}
+      // stampa: "stampa il preventivo rossi", "stampalo", "stampa l'ultimo documento"
+      if(P.file&&(m=u.match(/^(?:stampa(?:mi|lo|la)?|manda in stampa)(?:\s+(?:il\s+file|il\s+documento|il|la|l)?\s*(.*))?$/))&&!/^(?:una )?pagina di prova/.test(m[1]||'')){let path=null;const w=(m[1]||'').trim();
+        if(!w||/^(questo|questa|ultimo|ultima|l ultimo|l ultima|ultimo documento|il documento)$/.test(w)){path=LASTDOC}else{const r=await SYS.call('auto.find',{testo:w}).catch(()=>({results:[]}));const f=(r.results||[]).find(x=>!x.dir);path=f&&f.path}
+        if(!path){reply('Non so quale file stampare: dimmi il nome, per esempio “stampa il preventivo Rossi”.','Quale file stampo?');return true}
+        printDialog(path);reply(`🖨️ Ecco la stampa di <b>${esc(path.split('/').pop())}</b>: controlla e premi Stampa.`,'Ecco, controlla e premi stampa.');return true}
+      // rete: "fai un ping a google", "c'è internet?", "chi c'è sulla mia rete", "scansiona la rete"
+      if((m=u.match(/^(?:fai |fammi )?(?:un )?ping (?:a |al |verso |di )?(.+)$/))){openApp('nettools',{goto:{ping:m[1].replace(/\s+/g,'')}});reply(`📶 Faccio un ping a <b>${esc(m[1])}</b>: guarda la finestra Rete.`,'Ecco il ping.');return true}
+      if(/(chi c e|quali dispositivi|dispositivi (?:collegati|connessi)|scansiona|radar).*(rete|wifi|wi fi)|^(apri il )?radar/.test(u)){openApp('nettools');reply('📡 Apro il radar della rete: tra pochi secondi vedi tutti i dispositivi collegati.','Ecco il radar della rete.');return true}
+      // Bluetooth: "manda via bluetooth il file preventivo", "invia al telefono con il bluetooth l'ultimo documento"
+      if(P.file&&/bluetooth/.test(u)&&(m=u.match(/^(?:manda|invia|spedisci|trasferisci)\s+(?:con il bluetooth\s+|via bluetooth\s+|col bluetooth\s+|in bluetooth\s+)?(?:al telefono\s+)?(?:il\s+file\s+|il\s+documento\s+|la\s+foto\s+|il\s+|la\s+|l\s+)?(.+?)(?:\s+(?:con il|via|col|in) bluetooth)?(?:\s+al telefono)?$/))){
+        const w=m[1].replace(/(con il|via|col|in) bluetooth|al telefono/g,'').trim();let path=null;
+        if(!w||/^(questo|ultimo|ultimo documento|documento)$/.test(w))path=LASTDOC;else{const r=await SYS.call('auto.find',{testo:w}).catch(()=>({results:[]}));const f=(r.results||[]).find(x=>!x.dir);path=f&&f.path}
+        if(!path){reply('Quale file mando? Dimmi il nome.','Quale file mando?');return true}btSendDialog([path]);reply(`ᛒ Scegli il telefono a cui mandare <b>${esc(path.split('/').pop())}</b>.`,'Scegli il telefono.');return true}
       // traduzione lampo: "come si dice casa in inglese", "traduci buongiorno in tedesco", "cosa vuol dire thank you"
       {const LG='inglese|francese|spagnolo|tedesco|portoghese|russo|cinese|giapponese|arabo|rumeno|polacco|olandese|greco|albanese|ucraino|turco|coreano|svedese|croato|serbo|ungherese|ceco|hindi|italiano';let tx=null,to=null;
        if((m=u.match(new RegExp('^come si (?:dice|scrive|traduce)\\s+(.+?)\\s+in\\s+('+LG+')$'))))tx=m[1],to=m[2];

@@ -1109,7 +1109,7 @@ try:
     CMDS.update(riseai.CMDS)
 except Exception:  # senza il modulo l'Assistente risulta semplicemente non disponibile
     pass
-for _m in ('risevoice', 'riseweb', 'riseapps', 'riseauto', 'riseremind', 'riseupdate', 'riseinstall'):
+for _m in ('risevoice', 'riseweb', 'riseapps', 'riseauto', 'riseremind', 'riseupdate', 'riseinstall', 'risenet', 'riseprint', 'risebt'):
     try:
         CMDS.update(__import__(_m).CMDS)
     except Exception:
