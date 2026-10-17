@@ -384,10 +384,21 @@ def _tts_proc():
     ready = threading.Event()
 
     def wait_ready():
+        import json
         try:
             for line in p.stdout:
-                if line.strip() == 'pronto':
+                line = line.strip()
+                if line == 'pronto':
                     ready.set()
+                elif line.startswith('{'):
+                    try:
+                        m = json.loads(line)
+                    except ValueError:
+                        continue
+                    if 'env' in m:
+                        _lip.update(env=m['env'], step=m.get('step', 40) / 1000.0, t0=time.time(), seq=_lip.get('seq', 0) + 1)
+                    elif m.get('end'):
+                        _lip.update(env=[], t0=0)
         except Exception:
             pass
     threading.Thread(target=wait_ready, daemon=True).start()
@@ -416,6 +427,7 @@ def stop_speaking(_=None):
             _tts_send({'stop': True})
         except Exception:
             pass
+    _lip.update(env=[], t0=0)
     p = _play['proc']
     _play['proc'] = None
     if p and p.poll() is None:
@@ -500,6 +512,18 @@ def shutdown(_=None):
     return {'ok': True}
 
 
+_lip = {'env': [], 'step': 0.04, 't0': 0}
+
+
+def level(_=None):
+    """Volume della frase che si sta ascoltando (passi da 40 ms) e da quanto è partita: l'avatar muove la bocca."""
+    env, t0 = _lip['env'], _lip['t0']
+    if not env or not t0:
+        return {'ok': True, 'speaking': False, 'seq': _lip.get('seq', 0)}
+    return {'ok': True, 'speaking': True, 'seq': _lip.get('seq', 0), 'env': env,
+            'step': _lip['step'], 'elapsed': round(time.time() - t0, 3)}
+
+
 def speaking(_=None):
     p = _play['proc']
     return {'ok': True, 'speaking': bool(p and p.poll() is None)}
@@ -507,4 +531,5 @@ def speaking(_=None):
 
 CMDS = {'voice.status': status, 'voice.setup': setup, 'voice.listenStart': listen_start,
         'voice.listenStop': listen_stop, 'voice.listenCancel': listen_cancel, 'voice.say': say,
-        'voice.stop': stop_speaking, 'voice.speaking': speaking, 'voice.warm': warm, 'voice.shutdown': shutdown}
+        'voice.stop': stop_speaking, 'voice.speaking': speaking, 'voice.warm': warm, 'voice.shutdown': shutdown,
+        'voice.level': level}
