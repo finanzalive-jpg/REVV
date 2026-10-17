@@ -409,7 +409,7 @@ class Rise(Gtk.Application):
         self.popup_show({'kind': 'remind', 'data': r})
         try:
             import risevoice
-            risevoice.say({'voice': 'f', 'text': ('È scaduto il timer. ' if r.get('timer') else 'Promemoria: ') + r.get('text', '')})
+            risevoice.say({'voice': risevoice._lip.get('voice') or 'f', 'text': ('È scaduto il timer. ' if r.get('timer') else 'Promemoria: ') + r.get('text', '')})
         except Exception:
             pass
         return False
