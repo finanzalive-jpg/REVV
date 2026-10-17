@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 import urllib.request
 
 ICON = 'https://dl.flathub.org/repo/appstream/x86_64/icons/128x128/%s.png'
@@ -160,32 +161,57 @@ def _unregister(app_id):
 
 def _install(app_id, name):
     j = _jobs[app_id]
+    t0 = time.time()
+    log = open('/tmp/rise-negozio.log', 'a')
+    log.write('\n--- %s installo %s\n' % (time.strftime('%H:%M:%S'), app_id))
     try:
-        _run(['sudo', '-n', 'flatpak', 'remote-add', '--if-not-exists', 'flathub',
-              'https://dl.flathub.org/repo/flathub.flatpakrepo'], 60)
+        rc, _, err = _run(['sudo', '-n', 'flatpak', 'remote-add', '--if-not-exists', 'flathub',
+                           'https://dl.flathub.org/repo/flathub.flatpakrepo'], 60)
+        if rc != 0 and 'password' in (err or '').lower():
+            raise RuntimeError('serve il permesso di amministratore')
+        j['msg'] = 'Mi collego a Flathub…'
+        env = dict(os.environ, LANG='C', LC_ALL='C')
         p = subprocess.Popen(['sudo', '-n', 'flatpak', 'install', '-y', '--noninteractive', 'flathub', app_id],
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-        last = ''
-        for line in p.stdout:
-            line = line.strip()
-            if line:
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        last, buf = '', b''
+        # Flatpak aggiorna la percentuale sulla stessa riga (\r): si legge a pezzi, non a righe
+        while True:
+            chunk = p.stdout.read1(4096) if hasattr(p.stdout, 'read1') else p.stdout.read(512)
+            if not chunk:
+                break
+            buf += chunk
+            parts = re.split(rb'[\r\n]+', buf)
+            buf = parts.pop()
+            for raw in parts:
+                line = raw.decode(errors='replace').strip()
+                if not line:
+                    continue
+                log.write(line + '\n')
                 last = line
-            m = re.search(r'(\d{1,3})%', line)
-            if m:
-                j['pct'] = int(m.group(1))
-            if 'Installing' in line or 'Installazione' in line:
-                j['msg'] = 'Installo…'
-            elif 'Downloading' in line or 'Scaricamento' in line:
-                j['msg'] = 'Scarico…'
+                m = re.search(r'(\d{1,3})%', line)
+                if m:
+                    j['pct'] = max(1, min(99, int(m.group(1))))
+                step = re.search(r'Installing (\d+)/(\d+)', line)
+                if step:
+                    j['msg'] = 'Installo (parte %s di %s)…' % (step.group(1), step.group(2))
+                elif 'Platform' in line or 'runtime' in line.lower():
+                    j['msg'] = 'Scarico i componenti di base (solo la prima volta)…'
+            log.flush()
         p.wait()
         if p.returncode != 0 and app_id not in installed_ids():
-            raise RuntimeError(last[-200:] or 'installazione non riuscita')
+            low = last.lower()
+            why = ('nessuna connessione a internet' if 'resolve' in low or 'network' in low or 'connect' in low
+                   else 'manca spazio' if 'space' in low else last[-160:] or 'installazione non riuscita')
+            raise RuntimeError(why)
         _register(app_id, name)
         j.update(pct=100, msg='Installata')
     except Exception as e:
         j['error'] = 'Non sono riuscito a installarla: %s' % e
+        log.write('ERRORE: %s\n' % e)
     finally:
         j['running'] = False
+        j['secs'] = int(time.time() - t0)
+        log.close()
 
 
 def install(a):
@@ -197,7 +223,7 @@ def install(a):
     with _lock:
         if (_jobs.get(app_id) or {}).get('running'):
             return {'ok': True}
-        _jobs[app_id] = {'running': True, 'pct': 0, 'msg': 'Preparo…', 'error': None}
+        _jobs[app_id] = {'running': True, 'pct': 0, 'msg': 'Preparo…', 'error': None, 'start': time.time()}
     threading.Thread(target=_install, args=(app_id, a.get('name') or app_id), daemon=True).start()
     return {'ok': True}
 
@@ -223,7 +249,8 @@ def launch(a):
 
 
 def jobs(_=None):
-    return {'ok': True, 'jobs': {k: dict(v) for k, v in _jobs.items()}, 'installed': list(installed_ids())}
+    out = {k: dict(v) for k, v in _jobs.items()}
+    return {'ok': True, 'jobs': out, 'installed': list(installed_ids())}
 
 
 CMDS = {'store.catalog': catalog, 'store.search': search, 'store.install': install, 'store.remove': remove,
