@@ -57,6 +57,18 @@ chroot "$CH" apt-get update -qq
 # shellcheck disable=SC2046
 chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $(cat "$ROOT/build/packages.txt")
 
+log "3a/9 Installatore: avvio con Secure Boot e dual boot con Windows (GRUB firmato, shim, os-prober)"
+# grub-install non deve partire adesso (siamo nella cartella di costruzione): lo si disattiva e poi lo si rimette
+chroot "$CH" dpkg-divert --local --rename --add /usr/sbin/grub-install >/dev/null
+ln -sf /bin/true "$CH/usr/sbin/grub-install"
+chroot "$CH" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    grub-efi-amd64-signed shim-signed grub-efi-amd64-bin grub-pc-bin grub2-common efibootmgr os-prober \
+    parted gdisk squashfs-tools mokutil dosfstools e2fsprogs || echo "ATTENZIONE: pacchetti dell'installatore mancanti"
+rm -f "$CH/usr/sbin/grub-install"
+chroot "$CH" dpkg-divert --local --rename --remove /usr/sbin/grub-install >/dev/null
+for t in grub-install grub-mkconfig efibootmgr os-prober parted unsquashfs; do echo "$t: $(chroot "$CH" sh -c "command -v $t" || echo MANCANTE)"; done
+ls "$CH/usr/lib/shim/" 2>/dev/null | head -5
+
 log "3b/9 Suite Office: WordCraft, GridCraft, DeckCraft (ultima versione ufficiale)"
 mkdir -p "$CH/tmp/craft"
 for app in wordcraft gridcraft deckcraft; do
@@ -209,6 +221,7 @@ log "8/9 Immagine compressa del sistema"
 mkdir -p "$ISO/casper" "$ISO/boot/grub" "$ISO/.disk"
 cp "$CH/boot/vmlinuz-$KVER" "$ISO/casper/vmlinuz"
 cp "$CH/boot/initrd.img-$KVER" "$ISO/casper/initrd"
+cp "$CH/boot/config-$KVER" "$ISO/casper/config" 2>/dev/null || true   # serve all'installatore
 chmod 644 "$ISO/casper/vmlinuz" "$ISO/casper/initrd"
 chroot "$CH" dpkg-query -W --showformat='${Package} ${Version}\n' > "$ISO/casper/filesystem.manifest"
 # Le cartelle /proc /sys /dev /run /tmp /boot devono esistere (vuote) o l'avvio si blocca

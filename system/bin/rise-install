@@ -1,0 +1,373 @@
+#!/usr/bin/env python3
+"""Rise – installazione sul disco del computer, ACCANTO a Windows (dual boot), senza toccarlo.
+
+    rise-install scan                  dischi, partizioni e spazio libero (JSON)
+    rise-install run < opzioni.json    installa (come root); avanzamento in /tmp/rise-install-status.json
+
+Regole di sicurezza (non negoziabili):
+  * si usa SOLO spazio non allocato: nessuna partizione esistente viene ridimensionata, formattata o cancellata;
+  * prima di scrivere si ricontrolla che lo spazio sia ancora libero e, dopo aver creato la partizione nuova,
+    che tutte le altre partizioni siano identiche a prima (inizio, fine, tipo); se no ci si ferma;
+  * la chiavetta da cui gira Rise e i dischi USB non vengono mai proposti;
+  * nella partizione EFI di Windows si aggiunge solo la cartella EFI/rise (come fa Ubuntu): i file di Windows restano.
+Opzioni (JSON su stdin): disk, start, end (settori dello spazio libero), fullname, user, password,
+                         autologin (bool), copy_models (lista di cartelle), dry_run (bool)
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+STATUS = '/tmp/rise-install-status.json'
+TARGET = '/mnt/rise-target'
+MIN_GB = 20
+SQUASH = tuple(filter(None, (os.environ.get('RISE_INSTALL_TEST_SQUASH'), '/cdrom/casper/filesystem.squashfs',
+                             '/run/live/medium/casper/filesystem.squashfs')))
+ESP_GUID = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
+GPT_KIND = {'c12a7328': 'EFI System', 'e3c9e316': 'Microsoft reserved', 'ebd0a0a2': 'Microsoft basic data',
+            'de94bba4': 'Windows recovery environment', '0fc63daf': 'Linux filesystem', '0657fd6d': 'Linux swap'}
+
+
+def run(cmd, check=True, **kw):
+    r = subprocess.run(cmd, capture_output=True, text=True, **kw)
+    if check and r.returncode != 0:
+        raise RuntimeError('%s: %s' % (' '.join(cmd[:3]), (r.stderr or r.stdout).strip()[-300:]))
+    return r
+
+
+def status(**kw):
+    try:
+        st = json.load(open(STATUS))
+    except (OSError, ValueError):
+        st = {}
+    st.update(kw, time=time.time())
+    tmp = STATUS + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(st, f, ensure_ascii=False)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, STATUS)
+    print(json.dumps(kw, ensure_ascii=False), flush=True)
+
+
+# ---------------- che dischi ci sono ----------------
+def uefi():
+    return os.path.isdir('/sys/firmware/efi')
+
+
+def secure_boot():
+    try:
+        for f in os.listdir('/sys/firmware/efi/efivars'):
+            if f.startswith('SecureBoot-'):
+                return open('/sys/firmware/efi/efivars/' + f, 'rb').read()[-1] == 1
+    except OSError:
+        pass
+    return False
+
+
+def boot_disk():
+    """Il disco (chiavetta) da cui gira Rise: non si tocca."""
+    for mp in ('/cdrom', '/run/live/medium', '/media/cdrom'):
+        r = run(['findmnt', '-n', '-o', 'SOURCE', mp], check=False)
+        src = r.stdout.strip()
+        if src:
+            r = run(['lsblk', '-n', '-o', 'PKNAME', src], check=False)
+            return '/dev/' + (r.stdout.strip().splitlines() or [os.path.basename(src)])[0]
+    return None
+
+
+def partitions(disk):
+    """Partizioni del disco: [{path, start, end, type, fstype, label, size}] (settori)."""
+    r = run(['sfdisk', '--json', disk], check=False)
+    try:
+        t = json.loads(r.stdout)['partitiontable']
+    except (ValueError, KeyError):
+        return None, []
+    out = []
+    for p in t.get('partitions', []):
+        out.append({'path': p['node'], 'start': int(p['start']), 'end': int(p['start']) + int(p['size']) - 1,
+                    'type': str(p.get('type', '')).lower(), 'name': p.get('name', '')})
+    lab = run(['lsblk', '-J', '-b', '-o', 'PATH,FSTYPE,LABEL,SIZE,PARTTYPENAME', disk], check=False)
+    info = {}
+    try:
+        for d in json.loads(lab.stdout)['blockdevices']:
+            for c in d.get('children', []) or []:
+                info[c['path']] = c
+    except (ValueError, KeyError):
+        pass
+    for p in out:
+        i = info.get(p['path'], {})
+        fs, lb = i.get('fstype') or '', i.get('label') or ''
+        if not fs and os.path.exists(p['path']):          # senza udev: si chiede direttamente alla partizione
+            b = run(['blkid', '-o', 'export', p['path']], check=False).stdout
+            kv = dict(l.split('=', 1) for l in b.splitlines() if '=' in l)
+            fs, lb = kv.get('TYPE', '').replace('BitLocker', 'BitLocker'), kv.get('LABEL', '')
+        p.update(fstype=fs, label=lb, size=(p['end'] - p['start'] + 1) * 512,
+                 kind=i.get('parttypename') or GPT_KIND.get(p['type'][:8], ''))
+    return t.get('label'), out
+
+
+def free_regions(disk):
+    r = run(['sfdisk', '-F', disk], check=False)
+    sect = 512
+    m = re.search(r'Units: sectors of \d+ \* (\d+)', r.stdout)
+    if m:
+        sect = int(m.group(1))
+    out = []
+    for line in r.stdout.splitlines():
+        f = line.split()
+        if len(f) >= 3 and f[0].isdigit() and f[1].isdigit():
+            s, e = int(f[0]), int(f[1])
+            out.append({'start': s, 'end': e, 'bytes': (e - s + 1) * sect})
+    return out, sect
+
+
+def scan():
+    bd = boot_disk()
+    r = run(['lsblk', '-J', '-b', '-d', '-o', 'PATH,TYPE,SIZE,MODEL,RM,TRAN,RO'], check=False)
+    disks = []
+    for d in json.loads(r.stdout or '{"blockdevices":[]}')['blockdevices']:
+        test = d['path'] == os.environ.get('RISE_INSTALL_TEST_DISK')
+        if (d['type'] != 'disk' and not test) or str(d.get('ro')) in ('1', 'True', 'true') or d['path'] == bd:
+            continue
+        if d['path'].startswith('/dev/loop') and os.environ.get('RISE_INSTALL_TEST_DISK') == d['path']:
+            pass                                           # solo per le prove su un disco finto
+        elif str(d.get('rm')) in ('1', 'True', 'true') or d.get('tran') == 'usb' or d['path'].startswith(('/dev/zram', '/dev/loop')):
+            continue
+        label, parts = partitions(d['path'])
+        free, sect = free_regions(d['path'])
+        win = any(p['fstype'] in ('ntfs', 'BitLocker') for p in parts) or any('microsoft' in p['kind'].lower() for p in parts)
+        disks.append({'path': d['path'], 'model': (d.get('model') or '').strip(), 'size': int(d['size']),
+                      'table': label, 'partitions': parts, 'free': [f for f in free if f['bytes'] >= 1 << 30],
+                      'sector': sect, 'windows': win,
+                      'bitlocker': any(p['fstype'] == 'BitLocker' for p in parts),
+                      'esp': next((p['path'] for p in parts if p['type'] == ESP_GUID or p['kind'] == 'EFI System'), None)})
+    return {'ok': True, 'uefi': uefi(), 'secureBoot': secure_boot(), 'disks': disks, 'minGb': MIN_GB,
+            'squashfs': next((s for s in SQUASH if os.path.exists(s)), None)}
+
+
+# ---------------- installazione ----------------
+def _sig(parts):
+    return sorted((p['path'], p['start'], p['end'], p['type']) for p in parts)
+
+
+def _chroot(*cmd, check=True):
+    return run(['chroot', TARGET] + list(cmd), check=check, env=dict(os.environ, DEBIAN_FRONTEND='noninteractive', LANG='C.UTF-8'))
+
+
+def _umount_all():
+    for m in ('boot/efi', 'sys/firmware/efi/efivars', 'dev/pts', 'dev', 'proc', 'sys', 'run', ''):
+        p = os.path.join(TARGET, m)
+        if os.path.ismount(p):
+            run(['umount', '-l', p], check=False)
+
+
+def install(o):
+    disk, start, end = o['disk'], int(o['start']), int(o['end'])
+    user = o.get('user', '')
+    if not re.fullmatch(r'[a-z][a-z0-9-]{0,30}', user) or user in ('root', 'rise', 'admin', 'daemon', 'sys'):
+        raise RuntimeError('nome utente non valido')
+    if len(o.get('password') or '') < 4:
+        raise RuntimeError('la password deve avere almeno 4 caratteri')
+    squash = next((s for s in SQUASH if os.path.exists(s)), None)
+    if not squash:
+        raise RuntimeError('non trovo il sistema da copiare (avvia Rise dalla chiavetta)')
+    info = scan()
+    d = next((x for x in info['disks'] if x['path'] == disk), None)
+    if not d:
+        raise RuntimeError('disco non valido o non installabile')
+    reg = next((f for f in free_regions(disk)[0] if f['start'] <= start and f['end'] >= end), None)
+    if not reg:
+        raise RuntimeError('quello spazio non è più libero: ricomincia')
+    sect = d['sector']
+    a_start = (start + 2047) // 2048 * 2048            # allineato a 1 MiB
+    if (end - a_start + 1) * sect < MIN_GB * (1 << 30):
+        raise RuntimeError('servono almeno %d GB di spazio libero' % MIN_GB)
+    if info['uefi'] and not d['esp']:
+        raise RuntimeError('su questo disco non c’è la partizione di avvio EFI: non posso installare accanto a Windows')
+    if info['uefi'] and d['table'] != 'gpt':
+        raise RuntimeError('il disco non è GPT: installazione accanto a Windows non supportata in questo caso')
+    before = _sig(d['partitions'])
+    if o.get('dry_run'):
+        status(phase='done', done=True, pct=100, message='Prova riuscita: tutto pronto (nessuna modifica fatta).',
+               plan={'disk': disk, 'start': a_start, 'end': end, 'gb': round((end - a_start + 1) * sect / (1 << 30), 1)})
+        return
+
+    # 1) partizione nuova nello spazio libero
+    status(phase='partition', pct=2, message='Creo la partizione di Rise nello spazio libero…')
+    if d['table'] == 'gpt':
+        run(['parted', '-s', disk, 'unit', 's', 'mkpart', 'Rise', 'ext4', str(a_start), str(end)])
+    else:
+        run(['parted', '-s', disk, 'unit', 's', 'mkpart', 'primary', 'ext4', str(a_start), str(end)])
+    run(['partprobe', disk], check=False)
+    run(['udevadm', 'settle'], check=False)
+    if os.environ.get('RISE_INSTALL_TEST_HOOK'):               # prove senza udev: crea i nodi delle partizioni
+        run([os.environ['RISE_INSTALL_TEST_HOOK'], disk], check=False)
+    time.sleep(1)
+    _, parts = partitions(disk)
+    new = [p for p in parts if (p['path'], p['start'], p['end'], p['type']) not in before]
+    others = _sig([p for p in parts if p not in new])
+    if len(new) != 1 or others != before or new[0]['start'] < start or new[0]['end'] > end:
+        raise RuntimeError('le partizioni non sono come mi aspettavo: mi fermo per sicurezza (niente è stato formattato)')
+    part = new[0]['path']
+
+    # 2) formattazione (solo la partizione nuova)
+    status(phase='format', pct=4, message='Preparo la partizione nuova…')
+    run(['mkfs.ext4', '-F', '-q', '-L', 'Rise', part])
+    os.makedirs(TARGET, exist_ok=True)
+    _umount_all()
+    run(['mount', part, TARGET])
+
+    # 3) copia del sistema
+    status(phase='copy', pct=5, message='Copio Rise sul disco…')
+    p = subprocess.Popen(['unsquashfs', '-f', '-percentage', '-d', TARGET, squash], stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, text=True)
+    for line in p.stdout:
+        line = line.strip()
+        if line.isdigit():
+            status(pct=5 + int(line) * 70 // 100)
+    if p.wait() != 0:
+        raise RuntimeError('copia del sistema non riuscita')
+
+    if os.environ.get('RISE_INSTALL_TEST_STOP') == 'copy':        # prove: ci si ferma dopo la copia
+        _umount_all()
+        status(phase='done', done=True, pct=100, message='prova: copia fatta', part=part)
+        return
+    # 4) configurazione
+    status(phase='config', pct=76, message='Configuro il sistema…')
+    for m in ('dev', 'dev/pts', 'proc', 'sys', 'run'):
+        os.makedirs(os.path.join(TARGET, m), exist_ok=True)
+        run(['mount', '--bind', '/' + m, os.path.join(TARGET, m)])
+    if os.path.isdir('/sys/firmware/efi/efivars'):
+        run(['mount', '--bind', '/sys/firmware/efi/efivars', os.path.join(TARGET, 'sys/firmware/efi/efivars')], check=False)
+    kver = sorted(os.listdir(os.path.join(TARGET, 'lib/modules')))[-1]
+    os.makedirs(os.path.join(TARGET, 'boot'), exist_ok=True)
+    for base in ('/cdrom/casper', '/run/live/medium/casper'):
+        if os.path.exists(os.path.join(base, 'vmlinuz')):
+            shutil.copy2(os.path.join(base, 'vmlinuz'), os.path.join(TARGET, 'boot', 'vmlinuz-' + kver))
+            if os.path.exists(os.path.join(base, 'config')):
+                shutil.copy2(os.path.join(base, 'config'), os.path.join(TARGET, 'boot', 'config-' + kver))
+            break
+    uuid = run(['blkid', '-s', 'UUID', '-o', 'value', part]).stdout.strip()
+    fstab = ['# Rise', 'UUID=%s / ext4 errors=remount-ro 0 1' % uuid]
+    if info['uefi']:
+        esp_uuid = run(['blkid', '-s', 'UUID', '-o', 'value', d['esp']]).stdout.strip()
+        fstab.append('UUID=%s /boot/efi vfat umask=0077 0 1' % esp_uuid)
+        os.makedirs(os.path.join(TARGET, 'boot/efi'), exist_ok=True)
+        run(['mount', d['esp'], os.path.join(TARGET, 'boot/efi')])
+    open(os.path.join(TARGET, 'etc/fstab'), 'w').write('\n'.join(fstab) + '\n')
+    # niente più "modalità chiavetta"
+    _chroot('apt-get', 'purge', '-y', '-qq', 'casper', check=False)
+    for f in ('etc/casper.conf',):
+        try:
+            os.remove(os.path.join(TARGET, f))
+        except OSError:
+            pass
+    # utente
+    status(pct=80, message='Creo il tuo utente…')
+    groups = [g for g in ('sudo', 'adm', 'audio', 'video', 'plugdev', 'netdev', 'lpadmin', 'render', 'input', 'bluetooth')
+              if _chroot('getent', 'group', g, check=False).returncode == 0]
+    _chroot('useradd', '-m', '-s', '/bin/bash', '-c', o.get('fullname') or user, '-G', ','.join(groups), user)
+    r = subprocess.run(['chroot', TARGET, 'chpasswd'], input='%s:%s\n' % (user, o['password']), text=True, capture_output=True)
+    if r.returncode != 0:
+        raise RuntimeError('password non impostata: %s' % r.stderr.strip())
+    # accesso: automatico (come sulla chiavetta) oppure con la password
+    g = ['[terminal]', 'vt = 1', '']
+    if o.get('autologin', True):
+        g += ['[initial_session]', 'command = "/usr/local/bin/rise-session"', 'user = "%s"' % user, '']
+    g += ['[default_session]', 'command = "agreety --cmd /usr/local/bin/rise-session"', 'user = "_greetd"', '']
+    os.makedirs(os.path.join(TARGET, 'etc/greetd'), exist_ok=True)
+    open(os.path.join(TARGET, 'etc/greetd/config.toml'), 'w').write('\n'.join(g))
+    open(os.path.join(TARGET, 'etc/hostname'), 'w').write('rise\n')
+    open(os.path.join(TARGET, 'etc/hosts'), 'w').write('127.0.0.1 localhost\n127.0.1.1 rise\n')
+    try:
+        os.remove(os.path.join(TARGET, 'etc/machine-id'))
+    except OSError:
+        pass
+    _chroot('systemd-machine-id-setup', check=False)
+    # Wi-Fi già configurato: funziona subito
+    nm = '/etc/NetworkManager/system-connections'
+    if os.path.isdir(nm):
+        dst = os.path.join(TARGET, nm.lstrip('/'))
+        os.makedirs(dst, exist_ok=True)
+        for f in os.listdir(nm):
+            shutil.copy2(os.path.join(nm, f), dst)
+            os.chmod(os.path.join(dst, f), 0o600)
+    # il "cervello" e la voce dell'Assistente già scaricati: niente download di nuovo
+    home = os.path.join(TARGET, 'home', user)
+    for src in o.get('copy_models') or []:
+        if os.path.isdir(src):
+            sub = os.path.basename(src.rstrip('/'))
+            dst = os.path.join(home, '.local/share/rise', sub)
+            status(pct=82, message='Copio i file dell’Assistente (%s)…' % sub)
+            shutil.copytree(src, dst, dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns('*.part', 'lost+found'))
+    _chroot('chown', '-R', '%s:%s' % (user, user), '/home/' + user, check=False)
+
+    # 5) avvio: initramfs e GRUB con il menu Rise / Windows
+    status(phase='boot', pct=86, message='Preparo l’avvio…')
+    _chroot('update-initramfs', '-c', '-k', kver)
+    grubdef = ['GRUB_DEFAULT=0', 'GRUB_TIMEOUT_STYLE=menu', 'GRUB_TIMEOUT=8', 'GRUB_DISTRIBUTOR="Rise"',
+               'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash loglevel=3 i915.enable_psr=0"', 'GRUB_CMDLINE_LINUX=""',
+               'GRUB_DISABLE_OS_PROBER=false', 'GRUB_GFXMODE=auto']
+    for th in ('/cdrom/boot/grub/themes/rise', '/run/live/medium/boot/grub/themes/rise'):
+        if os.path.isfile(os.path.join(th, 'bg.png')):
+            dst = os.path.join(TARGET, 'boot/grub/themes/rise')
+            shutil.copytree(th, dst, dirs_exist_ok=True)
+            grubdef.append('GRUB_BACKGROUND="/boot/grub/themes/rise/bg.png"')
+            break
+    open(os.path.join(TARGET, 'etc/default/grub'), 'w').write('\n'.join(grubdef) + '\n')
+    if info['uefi']:
+        # il GRUB firmato (Secure Boot) cerca la configurazione in EFI/ubuntu: si usa quella cartella,
+        # e la voce del firmware si chiama "Rise". I file di Windows (EFI/Microsoft) non vengono toccati.
+        _chroot('grub-install', '--target=x86_64-efi', '--efi-directory=/boot/efi', '--bootloader-id=ubuntu',
+                '--uefi-secure-boot', '--no-nvram', '--recheck')
+        partn = run(['lsblk', '-no', 'PARTN', d['esp']]).stdout.strip()
+        loader = '\\EFI\\ubuntu\\shimx64.efi' if os.path.exists(os.path.join(TARGET, 'boot/efi/EFI/ubuntu/shimx64.efi')) \
+            else '\\EFI\\ubuntu\\grubx64.efi'
+        lst = run(['efibootmgr'], check=False).stdout
+        for m in re.finditer(r'^Boot([0-9A-F]{4})\*?\s+Rise\b', lst, re.M):      # voci "Rise" vecchie
+            run(['efibootmgr', '-q', '-b', m.group(1), '-B'], check=False)
+        run(['efibootmgr', '-q', '-c', '-d', disk, '-p', partn, '-L', 'Rise', '-l', loader.replace('\\\\', '\\')])
+    else:
+        _chroot('grub-install', '--target=i386-pc', '--recheck', disk)
+    status(pct=94, message='Cerco Windows per il menu di avvio…')
+    _chroot('update-grub')
+    cfg = open(os.path.join(TARGET, 'boot/grub/grub.cfg'), errors='replace').read()
+    has_win = 'Windows' in cfg
+    # 6) fine
+    status(phase='finish', pct=98, message='Ultimi ritocchi…')
+    run(['sync'])
+    _umount_all()
+    status(phase='done', done=True, pct=100, windows=has_win,
+           message='Fatto! Rise è installato. Spegni il computer, togli la chiavetta e riaccendi: '
+                   'comparirà il menu per scegliere Rise o Windows.' +
+                   ('' if has_win or not d['windows'] else ' (Non ho trovato Windows nel menu: dimmelo, si sistema.)'))
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else 'scan'
+    if cmd == 'scan':
+        print(json.dumps(scan(), ensure_ascii=False))
+        return 0
+    if cmd == 'run':
+        if os.geteuid() != 0:
+            print('serve root', file=sys.stderr)
+            return 1
+        o = json.loads(sys.stdin.read() or '{}')
+        status(phase='start', pct=0, done=False, error=None, message='Comincio…')
+        try:
+            install(o)
+            return 0
+        except Exception as e:
+            _umount_all()
+            status(phase='error', done=True, error=str(e), message='Installazione non riuscita: %s' % e)
+            return 1
+    print(__doc__)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
