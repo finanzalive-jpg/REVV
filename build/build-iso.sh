@@ -121,6 +121,20 @@ if chroot "$CH" python3 -m venv /opt/rise-py && chroot "$CH" /opt/rise-py/bin/pi
 else
   echo "ATTENZIONE: fpdf2 non installato, niente PDF dall'Assistente"
 fi
+# "Ehi Sara": vosk (Apache 2.0) e il piccolo modello italiano (circa 50 MB), tutto offline
+if chroot "$CH" /opt/rise-py/bin/pip install -q --no-cache-dir setuptools wheel && chroot "$CH" /opt/rise-py/bin/pip install -q --no-cache-dir vosk \
+   && chroot "$CH" /opt/rise-py/bin/python -c 'from vosk import Model, KaldiRecognizer; print("vosk: ok")'; then
+  mkdir -p /tmp/vosk-dl
+  for VURL in "https://alphacephei.com/vosk/models/vosk-model-small-it-0.22.zip"; do
+    if curl -fsSL --retry 3 -o /tmp/vosk-dl/m.zip "$VURL" && (cd /tmp/vosk-dl && python3 -m zipfile -e m.zip .); then
+      rm -rf "$CH/opt/vosk-it"; mv /tmp/vosk-dl/vosk-model-small-it-0.22 "$CH/opt/vosk-it"; echo "modello vosk: ok ($VURL)"; break
+    fi
+  done
+  [ -d "$CH/opt/vosk-it/am" ] || echo "ATTENZIONE: modello vosk non scaricato, niente \"Ehi Sara\""
+  rm -rf /tmp/vosk-dl; find "$CH/opt/rise-py" -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true
+else
+  echo "ATTENZIONE: vosk non installato, niente \"Ehi Sara\""
+fi
 PURL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
 mkdir -p /tmp/piper-dl
 if curl -fsSL -o /tmp/piper-dl/p.tgz "$PURL" && tar xzf /tmp/piper-dl/p.tgz -C /tmp/piper-dl; then

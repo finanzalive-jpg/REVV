@@ -33,6 +33,8 @@ Windows is a trademark of Microsoft Corporation. Rise is an independent project 
 
 - whisper.cpp (MIT) with OpenAI Whisper models (MIT): speech recognition, models downloaded on first use.
 - Kokoro-82M (Apache 2.0) via kokoro-onnx (MIT) with the Italian voices Sara and Nicola: text to speech, model downloaded on first use. Piper (MIT) as fallback.
+- Vosk (Apache 2.0) with vosk-model-small-it-0.22 (Apache 2.0): offline wake word ("Ehi Sara").
+- Assistant figures (Sara, Nicola): AI-generated portraits provided by the Rise author.
 - Web search through DuckDuckGo's public HTML page; pages are fetched directly by the user's computer.
 - fpdf2 (LGPL-3.0): PDF documents created by the Assistant.
 - Flathub / Flatpak (LGPL-2.1): app store; each app keeps its own license, shown on flathub.org.
