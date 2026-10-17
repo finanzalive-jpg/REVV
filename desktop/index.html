@@ -1178,14 +1178,16 @@ function renderStore(b){
   const body=$('.sto-body',b),qi=$('.sto-q',b);let DATA=null,poll=null,LAST=null;
   if(!NATIVE){body.innerHTML='<p class="note">Il Negozio funziona sul PC con Rise.</p>';return}
   const card=a=>{const j=(DATA&&DATA.jobs||{})[a.id];
-    const act=j&&j.running?`<div class="meter"><i style="width:${j.pct||3}%"></i></div><small>${esc(j.msg||'')} ${j.pct?j.pct+'%':''}</small>`
+    const el=j&&j.start?Math.max(0,Math.round(Date.now()/1000-j.start)):0,mmss=Math.floor(el/60)+':'+String(el%60).padStart(2,'0');
+    const act=j&&j.running?`<div class="meter"><i style="width:${j.pct||3}%"></i></div><small>${esc(j.msg||'')} ${j.pct?j.pct+'%':''} · ${mmss}</small>`
       :a.installed?`<button class="btn primary" data-run="${esc(a.id)}">Apri</button> <button class="btn" data-rm="${esc(a.id)}" title="Disinstalla">Togli</button>`
       :`<button class="btn primary" data-inst="${esc(a.id)}" data-name="${esc(a.name)}">Installa</button>`;
     return `<div class="sto-card"><img src="${esc(a.icon)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><div class="sto-t"><b>${esc(a.name)}</b><small>${esc(a.desc)}</small>${j&&j.error?`<small class="err">${esc(j.error)}</small>`:''}</div><div class="sto-a">${act}</div></div>`};
   const bind=()=>{
-    $$('[data-inst]',body).forEach(x=>x.onclick=async()=>{x.disabled=true;const r=await SYS.call('store.install',{id:x.dataset.inst,name:x.dataset.name});if(!r.ok){alert(r.message);return}watch()});
+    $$('[data-inst]',body).forEach(x=>x.onclick=async()=>{x.disabled=true;x.textContent='Avvio…';let r;try{r=await SYS.call('store.install',{id:x.dataset.inst,name:x.dataset.name})}catch(e){r={ok:false,message:'Rise non risponde: '+e.message}}
+      if(!r.ok){x.disabled=false;x.textContent='Installa';const t=x.closest('.sto-card').querySelector('.sto-t');t.insertAdjacentHTML('beforeend',`<small class="err">${esc(r.message||'Non riesco a installarla.')}</small>`);return}watch()});
     $$('[data-run]',body).forEach(x=>x.onclick=()=>SYS.call('store.launch',{id:x.dataset.run}));
-    $$('[data-rm]',body).forEach(x=>x.onclick=async()=>{if(!confirm('Togliere questo programma?'))return;x.disabled=true;await SYS.call('store.remove',{id:x.dataset.rm});await load();refreshNative()})};
+    $$('[data-rm]',body).forEach(x=>x.onclick=async()=>{if(x.dataset.sure!=='1'){x.dataset.sure='1';x.textContent='Sicuro? Togli';setTimeout(()=>{x.dataset.sure='';x.textContent='Togli'},4000);return}x.disabled=true;await SYS.call('store.remove',{id:x.dataset.rm});await load();refreshNative()})};
   const refreshNative=()=>SYS.call('native.list').then(l=>{NAPPS=l||[]}).catch(()=>{});
   function show(){if(!DATA)return;
     if(LAST){body.innerHTML=LAST.length?`<div class="sto-grid">${LAST.map(a=>card(Object.assign(a,{installed:(DATA.installedSet||new Set()).has(a.id)||a.installed}))).join('')}</div>`:'<p class="note">Nessun programma trovato. Prova con un altro nome.</p>';bind();return}
